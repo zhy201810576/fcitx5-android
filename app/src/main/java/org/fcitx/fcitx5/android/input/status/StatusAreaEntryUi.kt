@@ -51,7 +51,7 @@ class StatusAreaEntryUi(override val ctx: Context, private val theme: Theme) : U
     }
 
     val textIcon = view(::AutoScaleTextView) {
-        setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20f)
+        setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16f)
         // keep original typeface, apply textStyle only
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             // 600 = Semi Bold, 700 = Bold which is too heavy
@@ -62,14 +62,14 @@ class StatusAreaEntryUi(override val ctx: Context, private val theme: Theme) : U
     }
 
     val label = textView {
-        textSize = 12f
+        textSize = 11f
         gravity = gravityCenter
         setTextColor(theme.keyTextColor)
     }
 
     override val root = object : CustomGestureView(ctx) {
         val content = constraintLayout {
-            add(bkg, lParams(dp(48), dp(48)) {
+            add(bkg, lParams(dp(40), dp(40)) {
                 topOfParent(dp(4))
                 centerHorizontally()
                 above(label)
@@ -88,7 +88,7 @@ class StatusAreaEntryUi(override val ctx: Context, private val theme: Theme) : U
 
         init {
             add(content, lParams(matchParent, matchParent))
-            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(96))
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(84))
         }
     }
 
@@ -109,7 +109,13 @@ class StatusAreaEntryUi(override val ctx: Context, private val theme: Theme) : U
         }
         bkgDrawable.paint.color =
             if (entry.active) theme.genericActiveBackgroundColor else theme.keyBackgroundColor
-        label.text = entry.label
+        label.text = simplifyLabel(entry.label)
+    }
+
+    // 去掉「当前状态 → 下一状态 …」的循环描述，只保留当前状态
+    private fun simplifyLabel(s: String): String {
+        val idx = s.indexOf('→')
+        return if (idx > 0) s.substring(0, idx).trim() else s
     }
 
     private fun getFirstCharacter(s: String): String {

@@ -180,7 +180,33 @@ class CommonKeyActionListener :
                             toggleIme()
                         }
                         SpaceLongPressBehavior.ShowPicker -> showInputMethodPicker()
+                        SpaceLongPressBehavior.VoiceInput -> {
+                            // 先显示语音占位覆盖层，并注册 UI 桥接回调，再启动外部语音会话
+                            runCatching {
+                                val kw = (windowManager.getEssentialWindow(KeyboardWindow) as KeyboardWindow)
+                                ContextCompat.getMainExecutor(service).execute { kw.showVoiceOverlay() }
+                                org.fcitx.fcitx5.android.link.VoiceOverlayUiBridge.onRecordingStarted = {
+                                    ContextCompat.getMainExecutor(service).execute { kw.startVoiceOverlayWave() }
+                                }
+                                org.fcitx.fcitx5.android.link.VoiceOverlayUiBridge.onAmplitude = { amp ->
+                                    ContextCompat.getMainExecutor(service).execute { kw.updateVoiceOverlayAmplitude(amp) }
+                                }
+                                org.fcitx.fcitx5.android.link.VoiceOverlayUiBridge.onDone = {
+                                    ContextCompat.getMainExecutor(service).execute { kw.hideVoiceOverlay() }
+                                }
+                            }
+                            org.fcitx.fcitx5.android.link.AsrkbSpeechClient.startHoldSession(service)
+                        }
                     }
+                }
+                is KeyAction.StopVoiceInputAction -> {
+                    // 先隐藏覆盖层，再发停止会话，避免闪烁
+                    runCatching {
+                        val kw = (windowManager.getEssentialWindow(KeyboardWindow) as KeyboardWindow)
+                        ContextCompat.getMainExecutor(service).execute { kw.hideVoiceOverlay() }
+                    }
+                    org.fcitx.fcitx5.android.link.VoiceOverlayUiBridge.clear()
+                    org.fcitx.fcitx5.android.link.AsrkbSpeechClient.stopHoldSession()
                 }
                 else -> {}
             }

@@ -33,6 +33,9 @@ import org.fcitx.fcitx5.android.ui.main.settings.behavior.SymbolSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.global.GlobalConfigFragment
 import org.fcitx.fcitx5.android.ui.main.settings.im.InputMethodConfigFragment
 import org.fcitx.fcitx5.android.ui.main.settings.im.InputMethodListFragment
+import org.fcitx.fcitx5.android.memeboard.BridgeSettingsFragment
+import org.fcitx.fcitx5.android.memeboard.HandwritingSettingsFragment
+import org.fcitx.fcitx5.android.memeboard.MemeBoardSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.theme.ThemeFragment
 import org.fcitx.fcitx5.android.utils.config.ConfigDescriptor
 import org.fcitx.fcitx5.android.utils.parcelable
@@ -79,6 +82,15 @@ sealed class SettingsRoute : Parcelable {
 
     @Serializable
     data object Symbol : SettingsRoute()
+
+    @Serializable
+    data object MemeBoard : SettingsRoute()
+
+    @Serializable
+    data object Handwriting : SettingsRoute()
+
+    @Serializable
+    data object Bridge : SettingsRoute()
 
     @Serializable
     data object Plugin : SettingsRoute()
@@ -218,6 +230,15 @@ sealed class SettingsRoute : Parcelable {
             }
             fragment<SymbolSettingsFragment, Symbol> {
                 label = ctx.getString(R.string.emoji_and_symbols)
+            }
+            fragment<MemeBoardSettingsFragment, MemeBoard> {
+                label = ctx.getString(R.string.memeboard_gallery)
+            }
+            fragment<HandwritingSettingsFragment, Handwriting> {
+                label = "手写输入"
+            }
+            fragment<BridgeSettingsFragment, Bridge> {
+                label = ctx.getString(R.string.bridge_services)
             }
             fragment<PluginFragment, Plugin> {
                 label = ctx.getString(R.string.plugins)

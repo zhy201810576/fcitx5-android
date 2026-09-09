@@ -456,11 +456,13 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
                     extDomains.toTypedArray()
                 )
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                lifecycle.launchWhenReady {
-                    SubtypeManager.syncWith(enabledIme())
-                }
-            }
+            // MemeBoard: 动态 subtype 同步在此模拟器镜像上会导致系统回滚 enabled 列表
+            // （表现为“无法设为默认输入法”）。打字不依赖系统 subtype，这里禁用。
+            // if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            //     lifecycle.launchWhenReady {
+            //         SubtypeManager.syncWith(enabledIme())
+            //     }
+            // }
         }
 
         override fun nativeLoopOnce() {

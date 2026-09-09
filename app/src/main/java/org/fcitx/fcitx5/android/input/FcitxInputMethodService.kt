@@ -7,11 +7,16 @@ package org.fcitx.fcitx5.android.input
 
 import android.annotation.SuppressLint
 import android.app.Dialog
+import android.content.ClipData
+import android.content.ClipDescription
+import android.content.ClipboardManager
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.Icon
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -30,6 +35,7 @@ import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
 import android.view.inputmethod.InputMethodSubtype
 import android.widget.FrameLayout
+import android.widget.Toast
 import android.widget.inline.InlinePresentationSpec
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
@@ -38,9 +44,13 @@ import androidx.autofill.inline.common.ImageViewStyle
 import androidx.autofill.inline.common.TextViewStyle
 import androidx.autofill.inline.common.ViewStyle
 import androidx.autofill.inline.v1.InlineSuggestionUi
+import androidx.core.content.FileProvider
+import androidx.core.view.inputmethod.InputConnectionCompat
+import androidx.core.view.inputmethod.InputContentInfoCompat
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.consumeEach
@@ -65,6 +75,10 @@ import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.cursor.CursorRange
 import org.fcitx.fcitx5.android.input.cursor.CursorTracker
+import org.fcitx.fcitx5.android.link.AsrEngineController
+import org.fcitx.fcitx5.android.link.AsrkbSpeechClient
+import org.fcitx.fcitx5.android.memeboard.MemeBoardMediaStore
+import org.fcitx.fcitx5.android.input.picker.KaomojiPendingCommit
 import org.fcitx.fcitx5.android.utils.InputMethodUtil
 import org.fcitx.fcitx5.android.utils.alpha
 import org.fcitx.fcitx5.android.utils.forceShowSelf
@@ -78,6 +92,7 @@ import splitties.bitflags.hasFlag
 import splitties.dimensions.dp
 import splitties.resources.styledColor
 import timber.log.Timber
+import java.io.File
 import kotlin.math.max
 
 class FcitxInputMethodService : LifecycleInputMethodService() {
@@ -218,11 +233,21 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
         prefs.candidates.registerOnChangeListener(recreateCandidatesViewListener)
         ThemeManager.addOnChangedListener(onThemeChangeListener)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            postFcitxJob {
-                SubtypeManager.syncWith(enabledIme())
-            }
+        // MemeBoard: 后台预加载进程内 SenseVoice 语音模型（从 asr 插件 assets 读取），
+        // 消除首次语音的 5 秒加载延迟；引擎内嵌进输入法进程，无跨进程绑定，
+        // 因此不受 HyperOS 链式启动管控影响（加载失败静默降级）。
+        lifecycleScope.launch(Dispatchers.IO) {
+            AsrEngineController.prewarm(this@FcitxInputMethodService)
         }
+        // MemeBoard: 该模拟器镜像对动态 subtype 的 setAdditionalInputMethodSubtypes /
+        // setExplicitlyEnabledInputMethodSubtypes 处理异常，会导致系统回滚 enabled 列表
+        // （表现为“无法设为默认输入法”）。fcitx5 自身打字不依赖系统 subtype，这里禁用同步。
+        // 如需恢复多输入法的系统级 subtype 显示，取消注释下面这段。
+        // if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        //     postFcitxJob {
+        //         SubtypeManager.syncWith(enabledIme())
+        //     }
+        // }
         super.onCreate()
         decorView = window.window!!.decorView
         contentView = decorView.findViewById(android.R.id.content)
@@ -316,7 +341,14 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     val subtype = SubtypeManager.subtypeOf(im) ?: return
                     skipNextSubtypeChange = im
                     // [^1]: notify system that input method subtype has changed
-                    switchInputMethod(InputMethodUtil.componentName, subtype)
+                    // MemeBoard: dynamic subtype may not be enabled yet at this moment;
+                    // a failed switch throws "Requested IME is not enabled" and crashes the IME,
+                    // which makes the system roll back the enabled list. Ignore failures instead.
+                    try {
+                        switchInputMethod(InputMethodUtil.componentName, subtype)
+                    } catch (e: Exception) {
+                        Timber.w(e, "Failed to switch input method subtype")
+                    }
                 }
                 if (inputDeviceMgr.evaluateOnInputMethodActivate()) {
                     showStatusIcon(StatusIconMapping.fromEntry(event.data))
@@ -389,13 +421,17 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 return
             }
             if (actionLabel?.isNotEmpty() == true && actionId != EditorInfo.IME_ACTION_UNSPECIFIED) {
+                AsrkbSpeechClient.onEditorAction()
                 currentInputConnection.performEditorAction(actionId)
                 return
             }
             when (val action = imeOptions and EditorInfo.IME_MASK_ACTION) {
                 EditorInfo.IME_ACTION_UNSPECIFIED,
                 EditorInfo.IME_ACTION_NONE -> sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
-                else -> currentInputConnection.performEditorAction(action)
+                else -> {
+                    AsrkbSpeechClient.onEditorAction()
+                    currentInputConnection.performEditorAction(action)
+                }
             }
         }
     }
@@ -451,6 +487,72 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 setSelection(target, target)
             }
         }
+    }
+
+    /** 当前输入目标 App 的包名（用于识别 QQ 等需要特殊处理的目标）。 */
+    fun currentTargetPackage(): String? =
+        currentInputEditorInfo.packageName?.takeIf { it.isNotBlank() }
+            ?: pkgNameCache.forUid(currentInputBinding.uid)
+
+    /**
+     * 提交一张图片到目标输入框。优先 commitContent（无缝发图），
+     * 目标 App 不支持时降级为复制到剪贴板并收起键盘。
+     */
+    fun commitImage(file: File, mimeType: String) {
+        val fileUri = FileProvider.getUriForFile(this, "$packageName.memeboard.fileprovider", file)
+        val ic = currentInputConnection
+        if (ic == null) {
+            copyImageToClipboard(file, mimeType)
+            requestHideSelf(0)
+            return
+        }
+        val editorInfo = currentInputEditorInfo
+        val description = ClipDescription("MemeBoard", arrayOf(mimeType))
+        val info = InputContentInfoCompat(fileUri, description, null)
+        val committed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N &&
+            InputConnectionCompat.commitContent(
+                ic,
+                editorInfo,
+                info,
+                InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION,
+                null
+            )
+        Timber.d("MemeBoard commitImage: committed=%s mime=%s file=%s", committed, mimeType, file.name)
+        if (committed) {
+            info.requestPermission()
+        } else {
+            copyImageToClipboard(file, mimeType)
+            requestHideSelf(0)
+            Toast.makeText(this, R.string.memeboard_copied, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** 通过系统分享面板把图片发给任意 App。 */
+    fun shareImage(file: File, mimeType: String) {
+        // 用公开的 MediaStore URI：无需授权，QQ 等 App 也能直接读取
+        val uri = MemeBoardMediaStore.publish(this, file, mimeType)
+            ?: FileProvider.getUriForFile(this, "$packageName.memeboard.fileprovider", file)
+        Timber.d("MemeBoard shareImage: uri=%s mime=%s", uri, mimeType)
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = ClipData.newUri(contentResolver, mimeType, uri)
+        }
+        val chooser = Intent.createChooser(send, null).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(chooser)
+    }
+
+    private fun copyImageToClipboard(file: File, mimeType: String) {
+        // 优先公开 MediaStore URI，规避 FileProvider 授权在部分 ROM 上失效导致粘贴读不到图
+        val uri = MemeBoardMediaStore.publish(this, file, mimeType)
+            ?: FileProvider.getUriForFile(this, "$packageName.memeboard.fileprovider", file)
+        Timber.d("MemeBoard copyImageToClipboard: uri=%s mime=%s", uri, mimeType)
+        val clip = ClipData(ClipDescription("MemeBoard", arrayOf(mimeType)), ClipData.Item(uri))
+        val cm = getSystemService(ClipboardManager::class.java)
+        cm.setPrimaryClip(clip)
     }
 
     private fun sendDownKeyEvent(eventTime: Long, keyEventCode: Int, metaState: Int = 0) {
@@ -725,6 +827,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
+        AsrkbSpeechClient.onStartInput(attribute, restarting)
         // update selection as soon as possible
         // sometimes when restarting input, onUpdateSelection happens before onStartInput, and
         // initialSel{Start,End} is outdated. but it's the client app's responsibility to send
@@ -757,6 +860,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     override fun onStartInputView(info: EditorInfo, restarting: Boolean) {
         Timber.d("onStartInputView: restarting=$restarting")
+        // 消费颜文字搜索页返回的待上屏文本：焦点回到目标 App 输入框时立即上屏
+        KaomojiPendingCommit.text?.let { text ->
+            KaomojiPendingCommit.text = null
+            commitText(text)
+        }
         postFcitxJob {
             focus(true)
         }
@@ -796,6 +904,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             cursorUpdateIndex
         )
         inputView?.updateSelection(newSelStart, newSelEnd)
+        AsrkbSpeechClient.onEditorEvent(this)
     }
 
     private val contentSize = floatArrayOf(0f, 0f)
@@ -1065,6 +1174,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     override fun onFinishInput() {
         Timber.d("onFinishInput")
+        AsrkbSpeechClient.onFinishInput()
         postFcitxJob {
             focus(false)
         }
@@ -1084,6 +1194,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onDestroy() {
+        AsrkbSpeechClient.onServiceDestroyed(this)
+        AsrEngineController.release()
         recreateInputViewPrefs.forEach {
             it.unregisterOnChangeListener(recreateInputViewListener)
         }

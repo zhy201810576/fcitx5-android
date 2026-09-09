@@ -42,6 +42,9 @@ object AppUtil {
     fun launchMainToThemeList(context: Context) =
         launchMainToDest(context, SettingsRoute.Theme)
 
+    fun launchMainToMemeBoard(context: Context) =
+        launchMainToDest(context, SettingsRoute.MemeBoard)
+
     fun launchMainToInputMethodConfig(context: Context, uniqueName: String, displayName: String) =
         launchMainToDest(context, SettingsRoute.InputMethodConfig(displayName, uniqueName))
 

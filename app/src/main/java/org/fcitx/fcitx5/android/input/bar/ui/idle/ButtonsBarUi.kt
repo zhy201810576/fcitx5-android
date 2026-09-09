@@ -44,6 +44,14 @@ class ButtonsBarUi(override val ctx: Context, private val theme: Theme) : Ui {
         contentDescription = ctx.getString(R.string.clipboard)
     }
 
+    val galleryButton = toolButton(R.drawable.ic_memeboard).apply {
+        contentDescription = ctx.getString(R.string.memeboard_gallery)
+    }
+
+    val handwritingButton = toolButton(R.drawable.ic_baseline_edit_24).apply {
+        contentDescription = ctx.getString(R.string.switch_to_handwriting)
+    }
+
     val moreButton = toolButton(R.drawable.ic_baseline_more_horiz_24).apply {
         contentDescription = ctx.getString(R.string.status_area)
     }

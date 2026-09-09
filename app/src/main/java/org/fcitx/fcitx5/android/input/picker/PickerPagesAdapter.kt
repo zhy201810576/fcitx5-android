@@ -37,6 +37,9 @@ class PickerPagesAdapter(
      */
     private val pages: MutableList<List<String>> = mutableListOf(listOf())
 
+    // 搜索模式下的结果页
+    private var searchResults: List<List<String>>? = null
+
     private fun buildCategories(data: List<Pair<PickerData.Category, Array<String>>>) {
         data.forEach { (cat, arr) ->
             val list = arr.filter(policy::filter)
@@ -48,6 +51,28 @@ class PickerPagesAdapter(
 
     init {
         buildCategories(rawData)
+    }
+
+    /**
+     * 设置搜索结果（替换所有页面显示搜索结果）
+     */
+    @SuppressLint("NotifyDataSetChanged")
+    fun setSearchResults(results: List<String>) {
+        if (results.isEmpty()) {
+            searchResults = listOf(emptyList())
+        } else {
+            searchResults = results.chunked(density.pageSize)
+        }
+        notifyDataSetChanged()
+    }
+
+    /**
+     * 清除搜索结果，恢复分类视图
+     */
+    @SuppressLint("NotifyDataSetChanged")
+    fun clearSearchResults() {
+        searchResults = null
+        notifyDataSetChanged()
     }
 
     private fun rebuildCategories() {
@@ -95,14 +120,19 @@ class PickerPagesAdapter(
         return categories[cat].second
     }
 
-    override fun getItemCount() = pages.size
+    override fun getItemCount() = searchResults?.size ?: pages.size
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         return ViewHolder(PickerPageUi(parent.context, theme, density, bordered))
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        if (position == 0) {
+        if (searchResults != null) {
+            // 搜索模式：显示搜索结果
+            val searchPages = searchResults!!
+            val items = if (position < searchPages.size) searchPages[position] else emptyList()
+            holder.ui.setItems(items, policy)
+        } else if (position == 0) {
             // RecentlyUsed content should be displayed as-is, without popups
             holder.ui.setItems(recentlyUsed.items)
         } else {

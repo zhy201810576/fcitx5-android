@@ -13,7 +13,6 @@ import org.fcitx.fcitx5.android.data.theme.Theme
 import splitties.dimensions.dp
 import splitties.views.dsl.constraintlayout.after
 import splitties.views.dsl.constraintlayout.bottomOfParent
-import splitties.views.dsl.constraintlayout.centerHorizontally
 import splitties.views.dsl.constraintlayout.centerVertically
 import splitties.views.dsl.constraintlayout.constraintLayout
 import splitties.views.dsl.constraintlayout.endOfParent
@@ -78,7 +77,8 @@ class TitleUi(override val ctx: Context, theme: Theme) : Ui {
                 if (showTitle) {
                     endOfParent(dp(5))
                 } else {
-                    centerHorizontally()
+                    startOfParent()
+                    endOfParent()
                 }
             })
         }

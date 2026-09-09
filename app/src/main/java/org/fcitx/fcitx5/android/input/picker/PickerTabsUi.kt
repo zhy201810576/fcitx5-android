@@ -6,6 +6,9 @@ package org.fcitx.fcitx5.android.input.picker
 
 import android.content.Context
 import android.graphics.Typeface
+import android.view.ViewGroup
+import android.widget.HorizontalScrollView
+import android.widget.LinearLayout
 import androidx.annotation.DrawableRes
 import androidx.core.view.isVisible
 import org.fcitx.fcitx5.android.data.theme.Theme
@@ -14,16 +17,11 @@ import org.fcitx.fcitx5.android.input.keyboard.CustomGestureView
 import org.fcitx.fcitx5.android.utils.alpha
 import org.fcitx.fcitx5.android.utils.pressHighlightDrawable
 import org.fcitx.fcitx5.android.utils.rippleDrawable
+import splitties.dimensions.dp
 import splitties.resources.drawable
-import splitties.views.dsl.constraintlayout.after
-import splitties.views.dsl.constraintlayout.before
-import splitties.views.dsl.constraintlayout.centerVertically
-import splitties.views.dsl.constraintlayout.constraintLayout
-import splitties.views.dsl.constraintlayout.endOfParent
-import splitties.views.dsl.constraintlayout.lParams
-import splitties.views.dsl.constraintlayout.startOfParent
 import splitties.views.dsl.core.Ui
 import splitties.views.dsl.core.add
+import splitties.views.dsl.core.horizontalLayout
 import splitties.views.dsl.core.imageView
 import splitties.views.dsl.core.lParams
 import splitties.views.dsl.core.textView
@@ -51,6 +49,7 @@ class PickerTabsUi(override val ctx: Context, val theme: Theme) : Ui {
         val icon = imageView()
 
         override val root = view(::CustomGestureView) {
+            setPadding(ctx.dp(6), 0, ctx.dp(6), 0)
             add(label, lParams {
                 gravity = gravityCenter
             })
@@ -93,10 +92,22 @@ class PickerTabsUi(override val ctx: Context, val theme: Theme) : Ui {
 
     private var onTabClick: (TabUi.(Int) -> Unit)? = null
 
-    override val root = constraintLayout { }
+    // 标签容器：LinearLayout 在 HorizontalScrollView 的 UNSPECIFIED 宽度下测量可靠，
+    // 避免 ConstraintLayout chain 在无限宽度下测量失败导致标签宽度为 0
+    private val tabContainer = horizontalLayout { }
+
+    // root 直接是 HorizontalScrollView；TitleUi.addExtension 给它 startOfParent+endOfParent
+    // 宽度约束，内部 tabContainer 超宽时可水平滑动
+    override val root = HorizontalScrollView(ctx).apply {
+        isHorizontalScrollBarEnabled = false
+        addView(tabContainer, ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+    }
 
     fun setTabs(categories: List<PickerData.Category>) {
-        tabs.forEach { root.removeView(it.root) }
+        tabs.forEach { tabContainer.removeView(it.root) }
         selected = -1
         tabs = Array(categories.size) {
             val category = categories[it]
@@ -107,12 +118,11 @@ class PickerTabsUi(override val ctx: Context, val theme: Theme) : Ui {
                 setActive(false)
             }
         }
-        tabs.forEachIndexed { i, tabUi ->
-            root.add(tabUi.root, root.lParams {
-                centerVertically()
-                if (i == 0) startOfParent() else after(tabs[i - 1].root)
-                if (i == tabs.size - 1) endOfParent() else before(tabs[i + 1].root)
-            })
+        tabs.forEach { tabUi ->
+            tabContainer.add(tabUi.root, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            ))
         }
     }
 

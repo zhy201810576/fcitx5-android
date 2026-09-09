@@ -67,8 +67,8 @@ class PickerPageUi(
         // emoji: 7/7/6, backspace on bottom right
         Medium(20, 7, 3, 23.7f, false, true),
 
-        // emoticon: 4/4/4, no backspace
-        Low(12, 4, 3, 19f, true, false)
+        // emoticon: 6/6/6, no backspace (compact layout)
+        Low(24, 6, 4, 16f, true, false)
     }
 
     private val popupOnKeyPress by AppPrefs.getInstance().keyboard.popupOnKeyPress

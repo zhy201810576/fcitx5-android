@@ -13,6 +13,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // sherpa-onnx 引擎（语音识别）
+        maven { url = uri("https://jitpack.io") }
     }
 }
 
@@ -35,3 +37,4 @@ include(":plugin:chewing")
 include(":plugin:sayura")
 include(":plugin:jyutping")
 include(":plugin:thai")
+include(":plugin:asr")

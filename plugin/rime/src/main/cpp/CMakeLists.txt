@@ -57,3 +57,29 @@ install(FILES
         DESTINATION "${FCITX_INSTALL_DATADIR}/rime-data"
         COMPONENT prebuilt-assets
         )
+
+# 万象拼音 (rime-wanxiang, CC BY 4.0, https://github.com/amzxyz/rime-wanxiang)
+install(DIRECTORY "wanxiang/dicts"
+        DESTINATION "${FCITX_INSTALL_DATADIR}/rime-data"
+        COMPONENT prebuilt-assets
+        )
+install(DIRECTORY "wanxiang/lua"
+        DESTINATION "${FCITX_INSTALL_DATADIR}/rime-data"
+        COMPONENT prebuilt-assets
+        )
+install(FILES
+        "wanxiang/wanxiang.schema.yaml"
+        "wanxiang/wanxiang.dict.yaml"
+        "wanxiang/wanxiang_algebra.yaml"
+        "wanxiang/wanxiang_symbols.yaml"
+        "wanxiang/wanxiang_english.schema.yaml"
+        "wanxiang/wanxiang_english.dict.yaml"
+        "wanxiang/wanxiang_mixedcode.schema.yaml"
+        "wanxiang/wanxiang_mixedcode.dict.yaml"
+        "wanxiang/wanxiang_reverse.schema.yaml"
+        "wanxiang/wanxiang_reverse.dict.yaml"
+        "wanxiang/custom_phrase.txt"
+        "wanxiang/wanxiang-lts-zh-hans.gram"
+        DESTINATION "${FCITX_INSTALL_DATADIR}/rime-data"
+        COMPONENT prebuilt-assets
+        )

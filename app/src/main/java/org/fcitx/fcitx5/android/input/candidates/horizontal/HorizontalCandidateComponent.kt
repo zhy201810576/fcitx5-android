@@ -15,6 +15,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import org.fcitx.fcitx5.android.R
+import org.fcitx.fcitx5.android.core.CandidateWord
 import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
@@ -84,6 +85,12 @@ class HorizontalCandidateComponent :
         )
     }
 
+    /**
+     * 外部候选词点击回调（手写等外部输入源）。非空时，候选词点击不再走
+     * [org.fcitx.fcitx5.android.daemon.FcitxConnection.select]，而是回调此处理器。
+     */
+    var externalCandidateClickListener: ((CandidateWord) -> Unit)? = null
+
     val adapter: HorizontalCandidateViewAdapter by lazy {
         object : HorizontalCandidateViewAdapter(theme) {
             override fun onBindViewHolder(holder: CandidateViewHolder, position: Int) {
@@ -93,7 +100,12 @@ class HorizontalCandidateComponent :
                     flexGrow = layoutFlexGrow
                 }
                 holder.itemView.setOnClickListener {
-                    fcitx.launchOnReady { it.select(holder.idx) }
+                    val external = externalCandidateClickListener
+                    if (external != null) {
+                        external(holder.candidate)
+                    } else {
+                        fcitx.launchOnReady { it.select(holder.idx) }
+                    }
                 }
                 holder.itemView.setOnLongClickListener {
                     inputView.showCandidateActionMenu(holder.idx, holder.candidate.text, holder.ui.root)
@@ -194,5 +206,10 @@ class HorizontalCandidateComponent :
         if (candidates.isEmpty()) {
             refreshExpanded(0)
         }
+    }
+
+    /** 供外部输入源（手写等）提交候选词，复用内部布局逻辑。 */
+    fun submitCandidates(candidates: Array<CandidateWord>) {
+        onCandidateUpdate(FcitxEvent.CandidateListEvent.Data(candidates.size, candidates))
     }
 }

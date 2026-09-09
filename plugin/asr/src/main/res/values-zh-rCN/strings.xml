@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name_debug">拾趣输入法（语音模型插件 | Debug）</string>
+    <string name="app_name_release">拾趣输入法（语音模型插件）</string>
+    <string name="description">离线语音识别模型（SenseVoice），为拾趣输入法提供语音输入</string>
+</resources>

@@ -110,6 +110,21 @@ class MainFragment : PaddingPreferenceFragment() {
                     SettingsRoute.Symbol
                 )
                 addDestinationPreference(
+                    R.string.memeboard_gallery,
+                    R.drawable.ic_baseline_tag_faces_24,
+                    SettingsRoute.MemeBoard
+                )
+                addDestinationPreference(
+                    R.string.handwriting,
+                    R.drawable.ic_baseline_edit_24,
+                    SettingsRoute.Handwriting
+                )
+                addDestinationPreference(
+                    R.string.bridge_services,
+                    R.drawable.ic_baseline_keyboard_voice_24,
+                    SettingsRoute.Bridge
+                )
+                addDestinationPreference(
                     R.string.plugins,
                     R.drawable.ic_baseline_android_24,
                     SettingsRoute.Plugin

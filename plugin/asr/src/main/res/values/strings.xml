@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name_debug">MemeBoard (Voice Model Plugin | Debug)</string>
+    <string name="app_name_release">MemeBoard (Voice Model Plugin)</string>
+    <string name="description">Offline speech recognition model (SenseVoice) for MemeBoard voice input</string>
+</resources>

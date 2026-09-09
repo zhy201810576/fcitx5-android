@@ -66,7 +66,7 @@ class ThemeSerializationTest {
 
     @Test
     fun version2() {
-        // Version 2.0
+        // Version 2.1 (current)
         val raw = """
             {
                "name":"",
@@ -80,6 +80,9 @@ class ThemeSerializationTest {
                "keyboardColor":0,
                "keyBackgroundColor":1275068415,
                "keyTextColor":-1,
+               "candidateTextColor":-1,
+               "candidateLabelColor":-1,
+               "candidateCommentColor":-905969665,
                "altKeyBackgroundColor":218103807,
                "altKeyTextColor":-905969665,
                "accentKeyBackgroundColor":-10577930,
@@ -94,7 +97,7 @@ class ThemeSerializationTest {
                "genericActiveBackgroundColor":-10577930,
                "genericActiveForegroundColor":-1,
                "isDark":true,
-               "version":"2.0"
+               "version":"2.1"
             }
         """.trimIndent()
         val (decoded, migrated) = raw.toCustomTheme()

@@ -4,6 +4,7 @@
  */
 package org.fcitx.fcitx5.android.input.picker
 
+import android.content.Intent
 import androidx.core.content.ContextCompat
 import androidx.transition.Transition
 import androidx.viewpager2.widget.ViewPager2
@@ -30,7 +31,8 @@ class PickerWindow(
     private val switchKey: KeyDef,
     private val popupPreview: Boolean = true,
     private val followKeyBorder: Boolean = true,
-    private val policy: PickerPolicy = DefaultPickerPolicy()
+    private val policy: PickerPolicy = DefaultPickerPolicy(),
+    override val showTitle: Boolean = false
 ) : InputWindow.ExtendedInputWindow<PickerWindow>(), EssentialWindow {
 
     enum class Key : EssentialWindow.Key {
@@ -112,6 +114,15 @@ class PickerWindow(
         tabsUi.apply {
             setTabs(pickerPagesAdapter.getCategoryList())
             setOnTabClickListener { i ->
+                val cat = pickerPagesAdapter.getCategoryList().getOrNull(i)
+                if (cat?.label == KaomojiDataLoader.SEARCH_TAB_LABEL) {
+                    context.startActivity(
+                        Intent(context, KaomojiSearchActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                    )
+                    return@setOnTabClickListener
+                }
                 pager.setCurrentItem(pickerPagesAdapter.getRangeOfCategoryIndex(i).first, false)
             }
         }
@@ -158,5 +169,4 @@ class PickerWindow(
         pickerLayout.embeddedKeyboard.keyActionListener = null
     }
 
-    override val showTitle = false
-}
+    }

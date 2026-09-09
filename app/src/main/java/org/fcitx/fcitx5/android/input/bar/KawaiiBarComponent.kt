@@ -29,6 +29,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.CapabilityFlag
 import org.fcitx.fcitx5.android.core.CapabilityFlags
+import org.fcitx.fcitx5.android.core.CandidateWord
 import org.fcitx.fcitx5.android.core.FcitxEvent.CandidateListEvent
 import org.fcitx.fcitx5.android.data.clipboard.ClipboardManager
 import org.fcitx.fcitx5.android.data.clipboard.db.ClipboardEntry
@@ -62,6 +63,7 @@ import org.fcitx.fcitx5.android.input.editing.TextEditingWindow
 import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
 import org.fcitx.fcitx5.android.input.keyboard.CustomGestureView
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
+import org.fcitx.fcitx5.android.memeboard.MemeBoardWindow
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
 import org.fcitx.fcitx5.android.input.status.StatusAreaWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindow
@@ -303,6 +305,13 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 clipboardButton.setOnClickListener {
                     windowManager.attachWindow(ClipboardWindow())
                 }
+                galleryButton.setOnClickListener {
+                    windowManager.attachWindow(MemeBoardWindow())
+                }
+                handwritingButton.setOnClickListener {
+                    val kw = windowManager.getEssentialWindow(KeyboardWindow) as KeyboardWindow
+                    kw.showHandwritingOverlay()
+                }
                 moreButton.setOnClickListener {
                     windowManager.attachWindow(StatusAreaWindow())
                 }
@@ -457,6 +466,23 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
 
     override fun onCandidateUpdate(data: CandidateListEvent.Data) {
         barStateMachine.push(CandidatesUpdated, CandidateEmpty to data.candidates.isEmpty())
+    }
+
+    /**
+     * 显示外部候选词（手写等），并接管候选词点击上屏。
+     */
+    fun showExternalCandidates(candidates: List<String>, onSelect: (String) -> Unit) {
+        val words = candidates.map { CandidateWord("", it, "") }.toTypedArray()
+        horizontalCandidate.externalCandidateClickListener = { word -> onSelect(word.text) }
+        horizontalCandidate.submitCandidates(words)
+        barStateMachine.push(CandidatesUpdated, CandidateEmpty to words.isEmpty())
+    }
+
+    /** 清除外部候选词，恢复 fcitx5 原生候选词点击。 */
+    fun clearExternalCandidates() {
+        horizontalCandidate.externalCandidateClickListener = null
+        horizontalCandidate.submitCandidates(emptyArray())
+        barStateMachine.push(CandidatesUpdated, CandidateEmpty to true)
     }
 
     override fun onWindowAttached(window: InputWindow) {

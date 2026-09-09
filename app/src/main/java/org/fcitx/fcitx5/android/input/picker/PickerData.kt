@@ -259,7 +259,22 @@ object PickerData {
         )
     )
 
-    val Emoticon: List<Pair<Category, Array<String>>> = listOf(
+    val Emoticon: List<Pair<Category, Array<String>>> by lazy {
+        // 优先从 assets 加载丰富的颜文字数据，加载失败则 fallback 到硬编码数据
+        KaomojiDataLoader.getEmoticonData() ?: EmoticonFallback
+    }
+
+    /**
+     * 颜文字搜索：根据关键词搜索颜文字
+     */
+    fun searchEmoticon(query: String): List<String> {
+        return KaomojiDataLoader.search(query)
+    }
+
+    /**
+     * Fallback 颜文字数据（assets 加载失败时使用）
+     */
+    private val EmoticonFallback: List<Pair<Category, Array<String>>> = listOf(
         Category("(^_^)") to arrayOf(
             ":D", ":)", ";)", ":-)",
             "^_^", "(^^)", "(^^♪", "ʕ•ٹ•ʔ",
