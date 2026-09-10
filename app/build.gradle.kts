@@ -127,6 +127,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.coil)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.android.gif.drawable)
     implementation(libs.mlkit.digital.ink.recognition)
     implementation(libs.sherpa.onnx)
     testImplementation(libs.junit)

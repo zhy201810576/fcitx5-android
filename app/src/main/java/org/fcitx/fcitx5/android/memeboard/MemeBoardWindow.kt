@@ -383,7 +383,9 @@ class MemeBoardWindow : InputWindow.ExtendedInputWindow<MemeBoardWindow>() {
 
     private suspend fun download(file: MtFile): Pair<File, String> {
         val local = repository.download(file)
-        return local to guessMime(local.extension)
+        val mime = guessMime(local.extension)
+        // 发送前统一归一化尺寸/体积（静图 240×240 ≤500KB，动图 240×240 ≤1MB）
+        return MemeBoardImageProcessor.prepare(local, mime)
     }
 
     /* ================= 错误处理与自愈 ================= */
