@@ -72,10 +72,12 @@ object AsrEngineController {
         loading = true
         scope.launch {
             try {
+                // VAD 模型固定从插件 assets 读取，故无论 SenseVoice 来源都先取插件 assets
+                val assets = app.createPackageContext(PLUGIN_PACKAGE, 0).assets
                 val e = if (AsrModelManager.hasDownloadedModel(app)) {
-                    SpeechEngine.fromDir(AsrModelManager.modelDir(app).absolutePath)
+                    SpeechEngine.fromDir(AsrModelManager.modelDir(app).absolutePath, assets)
                 } else {
-                    SpeechEngine.fromAssets(app.createPackageContext(PLUGIN_PACKAGE, 0).assets)
+                    SpeechEngine.fromAssets(assets)
                 }
                 e.init()
                 synchronized(lock) { engine = e }

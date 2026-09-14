@@ -106,3 +106,5 @@ lint/tmp/
 # 大型模型 / 词库（超过 GitHub 100MB 限制，构建前用 download-models.sh 下载）
 *.onnx
 *.gram
+# 例外：Silero VAD 模型极小（约 629KB），随仓库分发，构建时无需下载
+!plugin/asr/src/main/assets/silero_vad.onnx
