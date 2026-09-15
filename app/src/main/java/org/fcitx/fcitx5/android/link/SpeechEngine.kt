@@ -104,9 +104,11 @@ class SpeechEngine private constructor(
         if (vadAssets == null) return null
         val silero = SileroVadModelConfig()
         silero.model = ASSET_VAD_MODEL
-        silero.threshold = 0.5f
+        // threshold 0.5 对轻声/弱音太严会漏识别；降到 0.3 提升小声识别，仍有 minSpeechDuration 兜底滤噪
+        silero.threshold = 0.3f
         silero.minSilenceDuration = 0.5f
-        silero.minSpeechDuration = 0.25f
+        // 0.25s 会丢弃轻声短句；降到 0.15s 让轻声也能通过
+        silero.minSpeechDuration = 0.15f
         silero.windowSize = VAD_WINDOW_SIZE
         silero.maxSpeechDuration = 20f
 
