@@ -16,15 +16,15 @@ import com.k2fsa.sherpa.onnx.VadModelConfig
 import java.io.ByteArrayOutputStream
 
 /**
- * SenseVoice 离线语音识别引擎（进程内运行），前置 Silero VAD 过滤静音/噪声。
+ * SenseVoice 离线语音识别引擎（进程内运行），前置 Silero VAD 做「是否有语音」门控。
  *
  * SenseVoice 模型双来源：
  *  - [fromAssets]：从 asr 插件 APK 的 assets 加载（出厂兜底）；
  *  - [fromDir]：从本地目录加载（在线下载的新模型，见 [AsrModelManager]）。
  *
- * VAD（Silero）：模型固定从 asr 插件 assets 加载（小且稳定，不参与在线更新）。
- * 每个识别会话使用独立的 [Vad] 实例（有状态）；VAD 加载失败时静默降级为整段识别，
- * 保证语音功能不因 VAD 不可用而退化。
+ * VAD（Silero）仅用于门控：判断整段录音里是否存在语音，存在才送 SenseVoice 识别，
+ * 从而消除「纯静音/噪声也脑补出文本」的问题；识别时仍用完整原始 PCM（不切段），
+ * 避免 VAD 切段把语音开头的几个字截断。VAD 加载失败时降级为无条件整段识别。
  */
 class SpeechEngine private constructor(
     private val assets: AssetManager?,
@@ -123,17 +123,19 @@ class SpeechEngine private constructor(
     fun newSession(): Session = Session()
 
     /**
-     * 一个识别会话：录音期间用 VAD 切出语音段，结束时只识别语音段；
-     * VAD 不可用或加载失败时，退回整段识别。
+     * 一个识别会话：录音期间始终缓冲完整 PCM，同时用 VAD 判断是否存在语音；
+     * 结束时若有语音则整段识别（避免切段截断开头），否则返回 null 不上屏。
      */
     inner class Session {
-        // 降级路径：无 VAD 时整段缓冲
+        // 完整原始 PCM（整段识别用）
         private val buffer = ByteArrayOutputStream()
         // VAD 输入对齐缓冲：累积到 512 样本再喂
         private val vadBuffer = ByteArrayOutputStream()
-        // VAD 切出的语音段（float 样本）
-        private val segments = ArrayList<FloatArray>()
         private var vad: Vad? = null
+
+        // VAD 是否检测到过语音（门控：决定是否整段识别）
+        @Volatile
+        private var speechDetected = false
 
         @Volatile
         private var hasData = false
@@ -154,16 +156,15 @@ class SpeechEngine private constructor(
         @Synchronized
         fun accept(pcm16: ByteArray): String? {
             hasData = true
+            buffer.write(pcm16)
             if (vad != null) {
                 vadBuffer.write(pcm16)
                 drainVadBlocks()
-            } else {
-                buffer.write(pcm16)
             }
             return null
         }
 
-        /** 结束会话：识别语音段（或整段），返回最终文本；全程无语音返回 null */
+        /** 结束会话：有语音则整段识别；全程无语音返回 null（不上屏） */
         @Synchronized
         fun finish(): String? {
             val rec = recognizer ?: return null
@@ -173,15 +174,14 @@ class SpeechEngine private constructor(
                 if (v != null) {
                     flushVadRemainder()
                     v.flush()
-                    collectSegments()
-                    if (segments.isEmpty()) {
-                        null // 全程无语音：不上屏
-                    } else {
-                        recognize(rec, concatSegments())
+                    // flush 后仍有已完成的段则视为存在语音
+                    while (!v.empty()) {
+                        if (v.front().samples.isNotEmpty()) speechDetected = true
+                        v.pop()
                     }
-                } else {
-                    recognize(rec, bytesToFloat(buffer.toByteArray()))
+                    if (!speechDetected) return null // 全程无语音：不上屏
                 }
+                recognize(rec, bytesToFloat(buffer.toByteArray()))
             } catch (t: Throwable) {
                 Log.e(TAG, "recognize failed", t)
                 null
@@ -192,8 +192,8 @@ class SpeechEngine private constructor(
         fun release() {
             buffer.reset()
             vadBuffer.reset()
-            segments.clear()
             hasData = false
+            speechDetected = false
             try {
                 vad?.release()
             } catch (_: Throwable) {
@@ -201,7 +201,7 @@ class SpeechEngine private constructor(
             vad = null
         }
 
-        /** 把 vadBuffer 里完整的 512 样本块取出喂给 VAD，并收集已完成的段 */
+        /** 把 vadBuffer 里完整的 512 样本块取出喂给 VAD，并更新语音检测状态 */
         private fun drainVadBlocks() {
             val v = vad ?: return
             val blockBytes = VAD_WINDOW_SIZE * 2
@@ -215,7 +215,7 @@ class SpeechEngine private constructor(
                 v.acceptWaveform(bytesToFloat(raw.copyOfRange(offset, offset + blockBytes)))
                 offset += blockBytes
             }
-            collectSegments()
+            if (v.isSpeechDetected()) speechDetected = true
         }
 
         /** 松手时处理 vadBuffer 里不足 512 样本的剩余（补零喂入） */
@@ -228,30 +228,6 @@ class SpeechEngine private constructor(
             val padded = FloatArray(VAD_WINDOW_SIZE)
             System.arraycopy(samples, 0, padded, 0, minOf(samples.size, padded.size))
             v.acceptWaveform(padded)
-        }
-
-        /** 取出 VAD 已完成的语音段 */
-        private fun collectSegments() {
-            val v = vad ?: return
-            while (!v.empty()) {
-                val seg = v.front()
-                if (seg.samples.isNotEmpty()) segments.add(seg.samples.copyOf())
-                v.pop()
-            }
-        }
-
-        /** 拼接多个语音段，段间插入 0.2s 静音，避免粘连 */
-        private fun concatSegments(): FloatArray {
-            val gapSamples = (SAMPLE_RATE * 0.2f).toInt()
-            val total = segments.sumOf { it.size } + gapSamples * (segments.size - 1)
-            val out = FloatArray(total)
-            var pos = 0
-            segments.forEachIndexed { i, seg ->
-                if (i > 0) pos += gapSamples
-                System.arraycopy(seg, 0, out, pos, seg.size)
-                pos += seg.size
-            }
-            return out
         }
     }
 
