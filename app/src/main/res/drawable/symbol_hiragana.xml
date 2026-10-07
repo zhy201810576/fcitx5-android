@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Three flowing cursive strokes representing hiragana's rounded style -->
+    <path
+        android:fillColor="#ffffff"
+        android:pathData="M4,5 C10,2 14,9 20,5 L20,7 C14,11 10,4 4,7 Z" />
+    <path
+        android:fillColor="#ffffff"
+        android:pathData="M4,11 C10,8 14,15 20,11 L20,13 C14,17 10,10 4,13 Z" />
+    <path
+        android:fillColor="#ffffff"
+        android:pathData="M4,17 C10,14 14,21 20,17 L20,19 C14,23 10,16 4,19 Z" />
+</vector>
