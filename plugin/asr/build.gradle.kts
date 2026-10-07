@@ -26,7 +26,7 @@ android {
     }
 
     androidResources {
-        // SenseVoice 模型体积大且本身已压缩，跳过 AAPT2 二次压缩以加快打包，
+        // Paraformer 模型体积大且本身已压缩，跳过 AAPT2 二次压缩以加快打包，
         // 并让 sherpa-onnx 能以 mmap（openFd）方式直接读取模型。
         @Suppress("UnstableApiUsage")
         noCompress += "onnx"

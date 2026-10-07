@@ -9,6 +9,7 @@
 #include <memory>
 #include <future>
 #include <fstream>
+#include <mutex>
 
 #include <android/log.h>
 
@@ -35,6 +36,10 @@
 
 #include <libime/pinyin/pinyindictionary.h>
 #include <libime/table/tablebaseddictionary.h>
+#include <libime/core/languagemodel.h>
+#include <libime/core/userlanguagemodel.h>
+#include <libime/pinyin/pinyinime.h>
+#include <libime/pinyin/pinyincontext.h>
 
 #include <boost/iostreams/device/file_descriptor.hpp>
 #include <boost/iostreams/stream_buffer.hpp>
@@ -1168,6 +1173,95 @@ Java_org_fcitx_fcitx5_android_data_pinyin_PinyinDictManager_pinyinDictConv(JNIEn
                   mode == JNI_TRUE ? PinyinDictFormat::Text : PinyinDictFormat::Binary);
     } catch (const std::exception &e) {
         throwJavaException(env, e.what());
+    }
+}
+
+namespace {
+// 语音识别结果 LM 重打分：懒加载 libime 拼音解码器（复用内置 zh_CN.lm + sc.dict）。
+std::mutex rescoreMutex;
+std::unique_ptr<libime::PinyinIME> rescoreIme;
+
+libime::PinyinIME *ensureRescoreIme() {
+    std::lock_guard<std::mutex> lock(rescoreMutex);
+    if (rescoreIme) {
+        return rescoreIme.get();
+    }
+    auto lmFile = libime::DefaultLanguageModelResolver::instance()
+                      .languageModelFileForLanguage("zh_CN");
+    if (!lmFile) {
+        return nullptr;
+    }
+    auto ime = std::make_unique<libime::PinyinIME>(
+        std::make_unique<libime::PinyinDictionary>(),
+        std::make_unique<libime::UserLanguageModel>(lmFile));
+    // 取 top-N 候选（默认 nbest=1），用于判断原文是否合理、避免过度纠错
+    ime->setNBest(10);
+    auto fp = fcitx::StandardPaths::global().open(
+        fcitx::StandardPathsType::Data, "libime/sc.dict");
+    if (fp.fd() < 0) {
+        return nullptr;
+    }
+    boost::iostreams::stream_buffer<boost::iostreams::file_descriptor_source>
+        buffer(fp.fd(), boost::iostreams::file_descriptor_flags::never_close_handle);
+    std::istream in(&buffer);
+    ime->dict()->load(libime::PinyinDictionary::SystemDict, in,
+                      libime::PinyinDictFormat::Binary);
+    rescoreIme = std::move(ime);
+    return rescoreIme.get();
+}
+
+} // namespace
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_fcitx_fcitx5_android_link_AsrRescore_decodePinyin(JNIEnv *env, jclass clazz, jstring pinyin, jobjectArray contextWords, jstring originalText) {
+    try {
+        libime::PinyinIME *ime = ensureRescoreIme();
+        if (!ime) {
+            return nullptr;
+        }
+        std::lock_guard<std::mutex> lock(rescoreMutex);
+        libime::PinyinContext ctx(ime);
+        if (contextWords != nullptr) {
+            std::vector<std::string> words;
+            jsize n = env->GetArrayLength(contextWords);
+            words.reserve(n);
+            for (jsize i = 0; i < n; i++) {
+                auto js = static_cast<jstring>(env->GetObjectArrayElement(contextWords, i));
+                if (js != nullptr) {
+                    CString cs(env, js);
+                    words.emplace_back(*cs);
+                    env->DeleteLocalRef(js);
+                }
+            }
+            if (!words.empty()) {
+                ctx.setContextWords(words);
+            }
+        }
+        CString pinyinStr(env, pinyin);
+        std::string py(*pinyinStr);
+        ctx.type(py.c_str(), py.size());
+        const auto &candidates = ctx.candidates();
+        if (candidates.empty()) {
+            return nullptr;
+        }
+        // 若识别原文就在 LM 的 top-N 候选里，说明它是合理解读，原样保留（避免把「你说是吧」改错成「你说十八」）
+        std::string original;
+        if (originalText != nullptr) {
+            CString os(env, originalText);
+            original = *os;
+        }
+        if (!original.empty()) {
+            for (const auto &candidate : candidates) {
+                if (candidate.toString() == original) {
+                    return env->NewStringUTF(original.c_str());
+                }
+            }
+        }
+        return env->NewStringUTF(candidates[0].toString().c_str());
+    } catch (const std::exception &e) {
+        throwJavaException(env, e.what());
+        return nullptr;
     }
 }
 

@@ -37,7 +37,7 @@
 # 关闭 R8 优化：避免第三方库（ML Kit / Firebase / Coil 等）内部单例与反射注册被破坏
 -dontoptimize
 
-# sherpa-onnx 语音识别引擎（进程内 SenseVoice）：保留其 JNI 绑定类，避免缩略后运行时 UnsatisfiedLinkError
+# sherpa-onnx 语音识别引擎（进程内 Paraformer）：保留其 JNI 绑定类，避免缩略后运行时 UnsatisfiedLinkError
 -keep class com.k2fsa.sherpa.onnx.** { *; }
 -dontwarn com.k2fsa.sherpa.onnx.**
 

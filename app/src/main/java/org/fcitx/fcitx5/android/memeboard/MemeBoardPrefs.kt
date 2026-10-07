@@ -33,6 +33,7 @@ object MemeBoardPrefs {
     private const val KEY_HANDWRITING_LANGUAGE = "handwriting_language"
     private const val KEY_FAVORITES = "favorites"
     private const val KEY_RECENT = "recent"
+    private const val KEY_ASR_RESCORE = "asr_rescore_enabled"
 
     private const val KEYSTORE = "AndroidKeyStore"
     private const val ALIAS = "memeboard_api_key"
@@ -62,6 +63,14 @@ object MemeBoardPrefs {
     }
 
     fun hasConfig(ctx: Context) = getServerUrl(ctx).isNotBlank() && getApiKey(ctx).isNotBlank()
+
+    /* ========== 语音识别 LM 纠错 ========== */
+
+    /** 语音识别结果是否启用语言模型重打分纠错（默认开）。 */
+    fun getAsrRescoreEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_ASR_RESCORE, true)
+
+    fun setAsrRescoreEnabled(ctx: Context, v: Boolean) =
+        sp(ctx).edit().putBoolean(KEY_ASR_RESCORE, v).apply()
 
     /* ========== 图库 / 标签多选 ========== */
 

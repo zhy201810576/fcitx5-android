@@ -5,11 +5,11 @@
  * 进程内语音输入客户端。
  *
  * 原实现通过 AIDL 绑定独立 asr-bridge 进程（BiBi「说点啥」协议），本文件改为
- * 直接调用进程内 [SpeechEngine]（SenseVoice 离线模型，模型在 asr 插件 APK 里），
+ * 直接调用进程内 [SpeechEngine]（Paraformer 离线模型，模型在 asr 插件 APK 里），
  * 因此不再有跨进程 bindService，也彻底摆脱 HyperOS 链式启动管控。
  *
  * 保留：录音（AudioRecord）、麦克风权限、音频焦点、覆盖层 UI、上屏逻辑。
- * 移除：Binder/AIDL 事务、输入上下文纠错协商（SenseVoice 离线模型不支持）。
+ * 移除：Binder/AIDL 事务、输入上下文纠错协商（Paraformer 离线模型不支持）。
  */
 package org.fcitx.fcitx5.android.link
 
@@ -29,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.input.FcitxInputMethodService
@@ -88,12 +89,22 @@ object AsrkbSpeechClient {
             currentState = STATE_PROCESSING
             service.lifecycleScope.launch(Dispatchers.IO) {
                 val text = runCatching { s.finish() }.getOrNull()
+                // 在主线程读取光标前已有文字，作为 LM 纠错的跨句语境
+                val contextText = withContext(Dispatchers.Main) {
+                    runCatching {
+                        service.currentInputConnection
+                            ?.getTextBeforeCursor(32, 0)
+                            ?.toString()
+                    }.getOrNull()
+                }
+                val corrected = text?.takeIf { it.isNotBlank() }
+                    ?.let { AsrRescore.postprocess(service, it, contextText) } ?: text
                 service.lifecycleScope.launch(Dispatchers.Main) {
                     currentState = STATE_IDLE
                     engine = null
-                    if (!text.isNullOrEmpty()) {
+                    if (!corrected.isNullOrEmpty()) {
                         service.finishComposing()
-                        service.commitText(text)
+                        service.commitText(corrected)
                     } else {
                         toast(service, service.getString(R.string.asrkb_err_no_result))
                     }
@@ -116,7 +127,7 @@ object AsrkbSpeechClient {
     }
 
     // ---- 以下为保持与 FcitxInputMethodService 调用点兼容的空实现 ----
-    // 输入上下文纠错协商随 AIDL 远程引擎一并移除（SenseVoice 离线模型不支持）。
+    // 输入上下文纠错协商随 AIDL 远程引擎一并移除（Paraformer 离线模型不支持）。
     fun onStartInput(info: EditorInfo, restarting: Boolean) = Unit
     fun onFinishInput() = Unit
     fun onEditorAction() = Unit

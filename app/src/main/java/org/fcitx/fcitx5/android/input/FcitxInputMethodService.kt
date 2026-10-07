@@ -233,7 +233,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
         prefs.candidates.registerOnChangeListener(recreateCandidatesViewListener)
         ThemeManager.addOnChangedListener(onThemeChangeListener)
-        // MemeBoard: 后台预加载进程内 SenseVoice 语音模型（从 asr 插件 assets 读取），
+        // MemeBoard: 后台预加载进程内 Paraformer 语音模型（从 asr 插件 assets 读取），
         // 消除首次语音的 5 秒加载延迟；引擎内嵌进输入法进程，无跨进程绑定，
         // 因此不受 HyperOS 链式启动管控影响（加载失败静默降级）。
         lifecycleScope.launch(Dispatchers.IO) {

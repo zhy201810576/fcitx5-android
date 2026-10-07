@@ -406,15 +406,7 @@
     <string name="bridge_model_ready">已加载</string>
     <string name="bridge_model_not_ready">未加载</string>
     <string name="bridge_load_model">加载模型</string>
-    <string name="bridge_load_model_hint">加载 SenseVoice 离线语音模型</string>
-    <string name="bridge_model_version">模型版本</string>
-    <string name="bridge_model_version_builtin">内置模型（出厂）</string>
-    <string name="bridge_model_version_downloaded">已下载模型</string>
-    <string name="bridge_check_update">检查更新</string>
-    <string name="bridge_check_update_hint">在线检查并下载新的语音识别模型</string>
-    <string name="bridge_update_checking">正在检查更新…</string>
-    <string name="bridge_update_downloading">正在下载模型 · %1$d%%</string>
-    <string name="bridge_update_uptodate">已是最新版本</string>
-    <string name="bridge_update_success">模型已更新，重启输入法后生效</string>
-    <string name="bridge_update_failed">更新失败，请检查网络后重试</string>
+    <string name="bridge_load_model_hint">加载 Paraformer 离线语音模型</string>
+    <string name="bridge_asr_rescore">语音识别语言模型纠错</string>
+    <string name="bridge_asr_rescore_hint">识别后按上下文重选同音字（如「睡觉/水饺」「晚安/网安」），仅对纯中文短句生效</string>
 </resources>

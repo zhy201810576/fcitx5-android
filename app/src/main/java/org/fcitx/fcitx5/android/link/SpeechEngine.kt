@@ -7,50 +7,40 @@ package org.fcitx.fcitx5.android.link
 import android.content.res.AssetManager
 import android.util.Log
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
+import com.k2fsa.sherpa.onnx.OfflineParaformerModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
-import com.k2fsa.sherpa.onnx.OfflineSenseVoiceModelConfig
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
 import java.io.ByteArrayOutputStream
 
 /**
- * SenseVoice 离线语音识别引擎（进程内运行），前置 Silero VAD 做「是否有语音」门控。
+ * Paraformer 离线语音识别引擎（进程内运行），前置 Silero VAD 做「是否有语音」门控。
  *
- * SenseVoice 模型双来源：
- *  - [fromAssets]：从 asr 插件 APK 的 assets 加载（出厂兜底）；
- *  - [fromDir]：从本地目录加载（在线下载的新模型，见 [AsrModelManager]）。
+ * 模型固定从 asr 插件 APK 的 assets 加载（sherpa-onnx-paraformer-zh-2024-03-09，
+ * 中英双语 int8 大模型，约 217MB），不再支持运行时在线下载新模型。
  *
- * VAD（Silero）仅用于门控：判断整段录音里是否存在语音，存在才送 SenseVoice 识别，
+ * VAD（Silero）仅用于门控：判断整段录音里是否存在语音，存在才送 Paraformer 识别，
  * 从而消除「纯静音/噪声也脑补出文本」的问题；识别时仍用完整原始 PCM（不切段），
  * 避免 VAD 切段把语音开头的几个字截断。VAD 加载失败时降级为无条件整段识别。
  */
 class SpeechEngine private constructor(
     private val assets: AssetManager?,
-    private val modelDir: String?,
-    private val vadAssets: AssetManager?,
 ) {
 
     companion object {
         private const val TAG = "AsrEngine"
-        private const val ASSET_MODEL_DIR = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
+        private const val ASSET_MODEL_DIR = "sherpa-onnx-paraformer-zh-2024-03-09"
         private const val ASSET_VAD_MODEL = "silero_vad.onnx"
         private const val SAMPLE_RATE = 16000
         private const val VAD_WINDOW_SIZE = 512
 
-        // 进程级模型缓存：输入法进程存活期间复用，避免重复加载 230MB 模型
+        // 进程级模型缓存：输入法进程存活期间复用，避免重复加载 217MB 模型
         @Volatile
         private var cachedRecognizer: OfflineRecognizer? = null
 
-        fun fromAssets(assets: AssetManager) = SpeechEngine(assets, null, assets)
-
-        fun fromDir(dir: String, vadAssets: AssetManager) = SpeechEngine(null, dir, vadAssets)
-
-        /** 模型来源切换（如下载新模型）后清空缓存，强制重新加载 */
-        fun invalidateCache() {
-            cachedRecognizer = null
-        }
+        fun fromAssets(assets: AssetManager) = SpeechEngine(assets)
     }
 
     private var recognizer: OfflineRecognizer? = cachedRecognizer
@@ -69,14 +59,12 @@ class SpeechEngine private constructor(
         try {
             recognizer = cachedRecognizer
             if (recognizer == null) {
-                Log.i(TAG, "loading SenseVoice model (${if (modelDir != null) "file" else "assets"}) ...")
-                val sv = OfflineSenseVoiceModelConfig()
-                sv.model = modelPath("model.int8.onnx")
-                sv.language = "" // 自动检测语言
-                sv.useInverseTextNormalization = true // 输出标点
+                Log.i(TAG, "loading Paraformer model (assets) ...")
+                val pf = OfflineParaformerModelConfig()
+                pf.model = modelPath("model.int8.onnx")
 
                 val modelConfig = OfflineModelConfig()
-                modelConfig.senseVoice = sv
+                modelConfig.paraformer = pf
                 modelConfig.tokens = modelPath("tokens.txt")
                 modelConfig.numThreads = 4
                 modelConfig.debug = false
@@ -101,7 +89,7 @@ class SpeechEngine private constructor(
 
     /** 构建 Silero VAD 配置；无 assets 源时返回 null（禁用 VAD） */
     private fun buildVadConfig(): VadModelConfig? {
-        if (vadAssets == null) return null
+        if (assets == null) return null
         val silero = SileroVadModelConfig()
         silero.model = ASSET_VAD_MODEL
         // threshold 0.5 对轻声/弱音太严会漏识别；降到 0.3 提升小声识别，仍有 minSpeechDuration 兜底滤噪
@@ -142,9 +130,9 @@ class SpeechEngine private constructor(
 
         init {
             val cfg = vadConfig
-            if (cfg != null && vadAssets != null) {
+            if (cfg != null && assets != null) {
                 vad = try {
-                    Vad(vadAssets, cfg)
+                    Vad(assets, cfg)
                 } catch (t: Throwable) {
                     Log.e(TAG, "VAD init failed, fallback to full decode", t)
                     null
@@ -241,9 +229,8 @@ class SpeechEngine private constructor(
         return text
     }
 
-    /** 模型/tokens 路径：文件模式用绝对目录，asset 模式用 assets 相对目录 */
-    private fun modelPath(name: String): String =
-        if (modelDir != null) "$modelDir/$name" else "$ASSET_MODEL_DIR/$name"
+    /** 模型/tokens 路径（assets 相对目录） */
+    private fun modelPath(name: String): String = "$ASSET_MODEL_DIR/$name"
 
     private fun bytesToFloat(pcm16: ByteArray): FloatArray {
         val n = pcm16.size / 2

@@ -6,20 +6,23 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "=== [1/2] 下载 SenseVoice 语音模型（约 228MB，Apache-2.0）==="
+echo "=== [1/2] 下载 Paraformer 中文语音模型（int8 约 217MB，Apache-2.0）==="
 ASR_ASSET_DIR="$SCRIPT_DIR/plugin/asr/src/main/assets"
-ASR_MODEL_DIR="$ASR_ASSET_DIR/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
-ASR_TARBALL="sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2"
+ASR_MODEL_DIR="$ASR_ASSET_DIR/sherpa-onnx-paraformer-zh-2024-03-09"
+ASR_TARBALL="sherpa-onnx-paraformer-zh-2024-03-09.tar.bz2"
 ASR_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/$ASR_TARBALL"
 
 if [ -f "$ASR_MODEL_DIR/model.int8.onnx" ]; then
   echo "已存在，跳过：$ASR_MODEL_DIR/model.int8.onnx"
 else
   mkdir -p "$ASR_ASSET_DIR"
-  echo "下载：$ASR_URL"
+  echo "下载：$ASR_URL（官方包含 fp32+int8 两个模型）"
   curl -L --fail --retry 3 -o "$ASR_TARBALL" "$ASR_URL"
   tar -xjf "$ASR_TARBALL" -C "$ASR_ASSET_DIR"
   rm -f "$ASR_TARBALL"
+  # 仅保留 int8 模型与词表，删除 fp32 大模型与测试音频，避免打进 APK
+  rm -f "$ASR_MODEL_DIR/model.onnx"
+  rm -rf "$ASR_MODEL_DIR/test_wavs"
   echo "完成：$ASR_MODEL_DIR"
 fi
 

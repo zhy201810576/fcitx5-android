@@ -4,23 +4,19 @@
  */
 package org.fcitx.fcitx5.android.memeboard
 
-import android.app.ProgressDialog
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceCategory
+import androidx.preference.SwitchPreferenceCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.link.AsrEngineController
-import org.fcitx.fcitx5.android.link.AsrModelManager
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
 import org.fcitx.fcitx5.android.utils.addCategory
 import org.fcitx.fcitx5.android.utils.addPreference
@@ -28,11 +24,11 @@ import org.fcitx.fcitx5.android.utils.addPreference
 /**
  * 语音模型设置页。
  *
- * SenseVoice 语音引擎已内嵌输入法进程，模型优先从在线下载目录读取、回退
- * asr 插件 APK 的 assets（出厂模型），因此不再有跨进程绑定，也无需 HyperOS
+ * Paraformer 语音引擎已内嵌输入法进程，模型固定从 asr 插件 APK 的 assets 加载，
+ * 不再有运行时在线下载，因此无需跨进程绑定，也无需 HyperOS
  * 自启动 / 省电策略 / 链式启动配置。本页展示：
  *  - 语音模型插件安装状态与版本，及一键跳转插件详情；
- *  - 引擎（模型）加载状态、模型版本，及手动加载 / 在线检查更新。
+ *  - 引擎（模型）加载状态，及手动加载。
  */
 class BridgeSettingsFragment : PaddingPreferenceFragment() {
 
@@ -98,15 +94,6 @@ class BridgeSettingsFragment : PaddingPreferenceFragment() {
         }
         category.addPreference(R.string.bridge_model_status, status)
 
-        // 模型版本与来源
-        val localSha = AsrModelManager.localModelSha256(ctx)
-        val versionSummary = if (localSha != null) {
-            getString(R.string.bridge_model_version_downloaded)
-        } else {
-            getString(R.string.bridge_model_version_builtin)
-        }
-        category.addPreference(R.string.bridge_model_version, versionSummary)
-
         category.addPreference(
             R.string.bridge_load_model,
             R.string.bridge_load_model_hint
@@ -118,52 +105,16 @@ class BridgeSettingsFragment : PaddingPreferenceFragment() {
         }
 
         category.addPreference(
-            R.string.bridge_check_update,
-            R.string.bridge_check_update_hint
-        ) {
-            checkAndUpdate()
-        }
-    }
-
-    private fun checkAndUpdate() {
-        val ctx = requireContext()
-        val progress = ProgressDialog(ctx).apply {
-            setMessage(ctx.getString(R.string.bridge_update_checking))
-            setCancelable(false)
-            show()
-        }
-        lifecycleScope.launch {
-            val remote = withContext(Dispatchers.IO) { AsrModelManager.checkUpdate() }
-            if (remote == null) {
-                progress.dismiss()
-                toast(ctx, ctx.getString(R.string.bridge_update_failed))
-                return@launch
-            }
-            val localSha = AsrModelManager.localModelSha256(ctx)
-            val isLatest = localSha == remote.modelSha256 ||
-                (localSha == null && remote.modelSha256 == AsrModelManager.BUILTIN_MODEL_SHA256)
-            if (isLatest) {
-                progress.dismiss()
-                toast(ctx, ctx.getString(R.string.bridge_update_uptodate))
-                return@launch
-            }
-            progress.setMessage(ctx.getString(R.string.bridge_update_downloading, 0))
-            val ok = withContext(Dispatchers.IO) {
-                AsrModelManager.download(ctx, remote) { p ->
-                    lifecycleScope.launch(Dispatchers.Main) {
-                        progress.setMessage(ctx.getString(R.string.bridge_update_downloading, (p * 100).toInt()))
-                    }
+            SwitchPreferenceCompat(ctx).apply {
+                setTitle(R.string.bridge_asr_rescore)
+                setSummary(R.string.bridge_asr_rescore_hint)
+                isChecked = MemeBoardPrefs.getAsrRescoreEnabled(ctx)
+                setOnPreferenceChangeListener { _, newValue ->
+                    MemeBoardPrefs.setAsrRescoreEnabled(ctx, newValue as Boolean)
+                    true
                 }
             }
-            progress.dismiss()
-            if (ok) {
-                AsrEngineController.reload(ctx)
-                toast(ctx, ctx.getString(R.string.bridge_update_success))
-                buildScreen()
-            } else {
-                toast(ctx, ctx.getString(R.string.bridge_update_failed))
-            }
-        }
+        )
     }
 
     /** 跳转插件应用详情页（用于查看/卸载模型插件） */
@@ -175,13 +126,6 @@ class BridgeSettingsFragment : PaddingPreferenceFragment() {
         }
         try {
             ctx.startActivity(intent)
-        } catch (_: Throwable) {
-        }
-    }
-
-    private fun toast(ctx: Context, msg: String) {
-        try {
-            Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
         } catch (_: Throwable) {
         }
     }

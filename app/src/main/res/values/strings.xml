@@ -407,15 +407,7 @@
     <string name="bridge_model_ready">Loaded</string>
     <string name="bridge_model_not_ready">Not loaded</string>
     <string name="bridge_load_model">Load model</string>
-    <string name="bridge_load_model_hint">Load the SenseVoice offline speech model</string>
-    <string name="bridge_model_version">Model version</string>
-    <string name="bridge_model_version_builtin">Built-in model (bundled)</string>
-    <string name="bridge_model_version_downloaded">Downloaded model</string>
-    <string name="bridge_check_update">Check for updates</string>
-    <string name="bridge_check_update_hint">Check online and download a new speech recognition model</string>
-    <string name="bridge_update_checking">Checking for updates…</string>
-    <string name="bridge_update_downloading">Downloading model · %1$d%%</string>
-    <string name="bridge_update_uptodate">Already up to date</string>
-    <string name="bridge_update_success">Model updated. Restart the input method to take effect</string>
-    <string name="bridge_update_failed">Update failed. Check your network and try again</string>
+    <string name="bridge_load_model_hint">Load the Paraformer offline speech model</string>
+    <string name="bridge_asr_rescore">Voice language model correction</string>
+    <string name="bridge_asr_rescore_hint">Re-pick homophones by context after recognition (e.g. 睡觉/水饺), only for short pure-Chinese sentences</string>
 </resources>
