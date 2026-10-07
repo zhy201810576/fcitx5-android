@@ -5,6 +5,7 @@ config_version: '0.40'
 
 schema_list:
   - schema: wanxiang
+  - schema: rime_ice
   - schema: luna_pinyin
   - schema: luna_pinyin_tw
   - schema: luna_pinyin_simp

@@ -83,3 +83,31 @@ install(FILES
         DESTINATION "${FCITX_INSTALL_DATADIR}/rime-data"
         COMPONENT prebuilt-assets
         )
+
+# 雾凙拼音 (rime-ice, GPL-3.0, https://github.com/iDvel/rime-ice)
+# 说明：opencc 的自定义数据(emoji.json/emoji.txt/others.txt)不在这里安装，
+#       而是放到 app/src/main/assets/usr/share/opencc/（rime-data/opencc 软链到此）。
+install(DIRECTORY "rime-ice/cn_dicts"
+        DESTINATION "${FCITX_INSTALL_DATADIR}/rime-data"
+        COMPONENT prebuilt-assets
+        )
+install(DIRECTORY "rime-ice/en_dicts"
+        DESTINATION "${FCITX_INSTALL_DATADIR}/rime-data"
+        COMPONENT prebuilt-assets
+        )
+install(DIRECTORY "rime-ice/lua"
+        DESTINATION "${FCITX_INSTALL_DATADIR}/rime-data"
+        COMPONENT prebuilt-assets
+        )
+install(FILES
+        "rime-ice/rime_ice.schema.yaml"
+        "rime-ice/rime_ice.dict.yaml"
+        "rime-ice/melt_eng.schema.yaml"
+        "rime-ice/melt_eng.dict.yaml"
+        "rime-ice/radical_pinyin.schema.yaml"
+        "rime-ice/radical_pinyin.dict.yaml"
+        "rime-ice/symbols_v.yaml"
+        "rime-ice/rime_ice_phrase.txt"
+        DESTINATION "${FCITX_INSTALL_DATADIR}/rime-data"
+        COMPONENT prebuilt-assets
+        )

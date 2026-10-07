@@ -88,3 +88,12 @@ install(DIRECTORY "${PREBUILT_DIR}/chinese-addons-data/pinyinhelper" DESTINATION
 install(DIRECTORY "${PREBUILT_DIR}/libime/table" DESTINATION "${FCITX_INSTALL_PKGDATADIR}" COMPONENT prebuilt-assets)
 install(DIRECTORY "${PREBUILT_DIR}/libime/data/" DESTINATION "${FCITX_INSTALL_DATADIR}/libime" COMPONENT prebuilt-assets)
 install(DIRECTORY "${PREBUILT_DIR}/opencc/data/" DESTINATION "${FCITX_INSTALL_DATADIR}/opencc" COMPONENT prebuilt-assets)
+# 雾凙拼音 rime-ice 自定义 opencc 数据（emoji 等），与 prebuilt opencc 数据一同安装到 usr/share/opencc
+set(RIME_ICE_OPENCC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../../plugin/rime/src/main/cpp/rime-ice/opencc")
+install(FILES
+        "${RIME_ICE_OPENCC_DIR}/emoji.json"
+        "${RIME_ICE_OPENCC_DIR}/emoji.txt"
+        "${RIME_ICE_OPENCC_DIR}/others.txt"
+        DESTINATION "${FCITX_INSTALL_DATADIR}/opencc"
+        COMPONENT prebuilt-assets
+        )
