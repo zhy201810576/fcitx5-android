@@ -407,6 +407,8 @@
     <string name="bridge_model_not_ready">未加载</string>
     <string name="bridge_load_model">加载模型</string>
     <string name="bridge_load_model_hint">加载 Paraformer 离线语音模型</string>
-    <string name="bridge_asr_rescore">语音识别语言模型纠错</string>
-    <string name="bridge_asr_rescore_hint">识别后按上下文重选同音字（如「睡觉/水饺」「晚安/网安」），仅对纯中文短句生效</string>
+    <string name="bridge_asr_rescore">拼音往返纠错（旧方案）</string>
+    <string name="bridge_asr_rescore_hint">把整句转拼音再经 libime 重解码，对准确文本易过度纠错，默认关闭、仅作对比</string>
+    <string name="bridge_llm_correct">端侧智能纠错</string>
+    <string name="bridge_llm_correct_hint">用端侧小模型按上下文纠正同音字（如「睡觉/水饺」），需安装 LLM 模型插件</string>
 </resources>

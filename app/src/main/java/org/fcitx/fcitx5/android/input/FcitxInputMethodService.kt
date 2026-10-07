@@ -77,6 +77,7 @@ import org.fcitx.fcitx5.android.input.cursor.CursorRange
 import org.fcitx.fcitx5.android.input.cursor.CursorTracker
 import org.fcitx.fcitx5.android.link.AsrEngineController
 import org.fcitx.fcitx5.android.link.AsrkbSpeechClient
+import org.fcitx.fcitx5.android.link.LlmEngineController
 import org.fcitx.fcitx5.android.memeboard.MemeBoardMediaStore
 import org.fcitx.fcitx5.android.input.picker.KaomojiPendingCommit
 import org.fcitx.fcitx5.android.utils.InputMethodUtil
@@ -238,6 +239,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // 因此不受 HyperOS 链式启动管控影响（加载失败静默降级）。
         lifecycleScope.launch(Dispatchers.IO) {
             AsrEngineController.prewarm(this@FcitxInputMethodService)
+            LlmEngineController.prewarm(this@FcitxInputMethodService)
         }
         // MemeBoard: 该模拟器镜像对动态 subtype 的 setAdditionalInputMethodSubtypes /
         // setExplicitlyEnabledInputMethodSubtypes 处理异常，会导致系统回滚 enabled 列表
@@ -1196,6 +1198,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     override fun onDestroy() {
         AsrkbSpeechClient.onServiceDestroyed(this)
         AsrEngineController.release()
+        LlmEngineController.release()
         recreateInputViewPrefs.forEach {
             it.unregisterOnChangeListener(recreateInputViewListener)
         }

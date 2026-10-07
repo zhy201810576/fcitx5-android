@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name_debug">MemeBoard (LLM Model Plugin | Debug)</string>
+    <string name="app_name_release">MemeBoard (LLM Model Plugin)</string>
+    <string name="description">On-device LLM (Qwen2.5-1.5B) for MemeBoard voice correction</string>
+</resources>

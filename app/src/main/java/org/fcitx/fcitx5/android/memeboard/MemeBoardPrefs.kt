@@ -34,6 +34,7 @@ object MemeBoardPrefs {
     private const val KEY_FAVORITES = "favorites"
     private const val KEY_RECENT = "recent"
     private const val KEY_ASR_RESCORE = "asr_rescore_enabled"
+    private const val KEY_LLM_CORRECT = "llm_correct_enabled"
 
     private const val KEYSTORE = "AndroidKeyStore"
     private const val ALIAS = "memeboard_api_key"
@@ -66,11 +67,21 @@ object MemeBoardPrefs {
 
     /* ========== 语音识别 LM 纠错 ========== */
 
-    /** 语音识别结果是否启用语言模型重打分纠错（默认开）。 */
-    fun getAsrRescoreEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_ASR_RESCORE, true)
+    /**
+     * 语音识别结果是否启用 libime pinyin round-trip 纠错（默认关）。
+     * 经真机验证该方案会过度纠错（把对的改错），已由端侧 LLM 选择性纠错取代，
+     * 保留此开关仅用于对比回退。
+     */
+    fun getAsrRescoreEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_ASR_RESCORE, false)
 
     fun setAsrRescoreEnabled(ctx: Context, v: Boolean) =
         sp(ctx).edit().putBoolean(KEY_ASR_RESCORE, v).apply()
+
+    /** 语音识别结果是否启用端侧 LLM 选择性纠错（默认开）。 */
+    fun getLlmCorrectEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_LLM_CORRECT, true)
+
+    fun setLlmCorrectEnabled(ctx: Context, v: Boolean) =
+        sp(ctx).edit().putBoolean(KEY_LLM_CORRECT, v).apply()
 
     /* ========== 图库 / 标签多选 ========== */
 

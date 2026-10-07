@@ -41,6 +41,9 @@
 #include <libime/pinyin/pinyinime.h>
 #include <libime/pinyin/pinyincontext.h>
 
+// 端侧 LLM 纠错（Qwen2.5-1.5B GGUF 经 llama.cpp 推理）
+#include "llama.h"
+
 #include <boost/iostreams/device/file_descriptor.hpp>
 #include <boost/iostreams/stream_buffer.hpp>
 #include "customphrase.h"
@@ -1259,6 +1262,121 @@ Java_org_fcitx_fcitx5_android_link_AsrRescore_decodePinyin(JNIEnv *env, jclass c
             }
         }
         return env->NewStringUTF(candidates[0].toString().c_str());
+    } catch (const std::exception &e) {
+        throwJavaException(env, e.what());
+        return nullptr;
+    }
+}
+
+// ============ 端侧 LLM 纠错（llama.cpp）============
+
+namespace {
+
+struct LlmEngineState {
+    llama_model *model = nullptr;
+    llama_context *ctx = nullptr;
+};
+
+// 纠错 prompt + 输出，1024 token 足够；小批量 + 4 线程适配移动端 CPU
+constexpr int kLlmContextSize = 1024;
+constexpr int kLlmBatchSize = 256;
+constexpr int kLlmThreads = 4;
+
+} // namespace
+
+extern "C"
+JNIEXPORT jlong JNICALL
+Java_org_fcitx_fcitx5_android_link_LlmEngine_nativeLoad(JNIEnv *env, jclass clazz, jstring modelPath) {
+    try {
+        CString path(env, modelPath);
+        llama_model_params mp = llama_model_default_params();
+        mp.use_mmap = true; // mmap 加载，省内存
+        llama_model *model = llama_model_load_from_file(*path, mp);
+        if (!model) {
+            return 0;
+        }
+        llama_context_params cp = llama_context_default_params();
+        cp.n_ctx = kLlmContextSize;
+        cp.n_batch = kLlmBatchSize;
+        cp.n_threads = kLlmThreads;
+        cp.n_threads_batch = kLlmThreads;
+        llama_context *ctx = llama_init_from_model(model, cp);
+        if (!ctx) {
+            llama_model_free(model);
+            return 0;
+        }
+        auto *state = new LlmEngineState{model, ctx};
+        return reinterpret_cast<jlong>(state);
+    } catch (const std::exception &e) {
+        throwJavaException(env, e.what());
+        return 0;
+    }
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_fcitx_fcitx5_android_link_LlmEngine_nativeFree(JNIEnv *env, jclass clazz, jlong handle) {
+    if (handle == 0) {
+        return;
+    }
+    auto *state = reinterpret_cast<LlmEngineState *>(handle);
+    llama_free(state->ctx);
+    llama_model_free(state->model);
+    delete state;
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_fcitx_fcitx5_android_link_LlmEngine_nativeGenerate(JNIEnv *env, jclass clazz, jlong handle, jstring prompt, jint maxTokens) {
+    if (handle == 0) {
+        return nullptr;
+    }
+    auto *state = reinterpret_cast<LlmEngineState *>(handle);
+    try {
+        std::string text = CString(env, prompt);
+        const llama_vocab *vocab = llama_model_get_vocab(state->model);
+
+        // 贪心采样（纠错任务要确定性输出）
+        llama_sampler *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
+        llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
+
+        // 两遍 tokenize：先取长度，再填充
+        int32_t n = -llama_tokenize(vocab, text.c_str(), static_cast<int32_t>(text.size()),
+                                    nullptr, 0, true, true);
+        if (n <= 0) {
+            llama_sampler_free(smpl);
+            return nullptr;
+        }
+        std::vector<llama_token> tokens(static_cast<size_t>(n));
+        llama_tokenize(vocab, text.c_str(), static_cast<int32_t>(text.size()),
+                       tokens.data(), n, true, true);
+
+        llama_batch batch = llama_batch_get_one(tokens.data(), static_cast<int32_t>(tokens.size()));
+        if (llama_decode(state->ctx, batch) != 0) {
+            llama_sampler_free(smpl);
+            return nullptr;
+        }
+
+        std::string out;
+        char piece[256];
+        const int limit = maxTokens > 0 ? maxTokens : 64;
+        for (int i = 0; i < limit; i++) {
+            llama_token t = llama_sampler_sample(smpl, state->ctx, -1);
+            if (llama_vocab_is_eog(vocab, t)) {
+                break;
+            }
+            int len = llama_token_to_piece(vocab, t, piece, sizeof(piece), 0, true);
+            if (len < 0) {
+                break;
+            }
+            out.append(piece, static_cast<size_t>(len));
+            batch = llama_batch_get_one(&t, 1);
+            if (llama_decode(state->ctx, batch) != 0) {
+                break;
+            }
+        }
+        llama_sampler_free(smpl);
+        return env->NewStringUTF(out.c_str());
     } catch (const std::exception &e) {
         throwJavaException(env, e.what());
         return nullptr;

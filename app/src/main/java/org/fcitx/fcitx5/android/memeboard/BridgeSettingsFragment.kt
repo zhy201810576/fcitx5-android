@@ -106,6 +106,18 @@ class BridgeSettingsFragment : PaddingPreferenceFragment() {
 
         category.addPreference(
             SwitchPreferenceCompat(ctx).apply {
+                setTitle(R.string.bridge_llm_correct)
+                setSummary(R.string.bridge_llm_correct_hint)
+                isChecked = MemeBoardPrefs.getLlmCorrectEnabled(ctx)
+                setOnPreferenceChangeListener { _, newValue ->
+                    MemeBoardPrefs.setLlmCorrectEnabled(ctx, newValue as Boolean)
+                    true
+                }
+            }
+        )
+
+        category.addPreference(
+            SwitchPreferenceCompat(ctx).apply {
                 setTitle(R.string.bridge_asr_rescore)
                 setSummary(R.string.bridge_asr_rescore_hint)
                 isChecked = MemeBoardPrefs.getAsrRescoreEnabled(ctx)

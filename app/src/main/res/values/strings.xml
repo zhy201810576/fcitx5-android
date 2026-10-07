@@ -408,6 +408,8 @@
     <string name="bridge_model_not_ready">Not loaded</string>
     <string name="bridge_load_model">Load model</string>
     <string name="bridge_load_model_hint">Load the Paraformer offline speech model</string>
-    <string name="bridge_asr_rescore">Voice language model correction</string>
-    <string name="bridge_asr_rescore_hint">Re-pick homophones by context after recognition (e.g. 睡觉/水饺), only for short pure-Chinese sentences</string>
+    <string name="bridge_asr_rescore">Pinyin round-trip correction (legacy)</string>
+    <string name="bridge_asr_rescore_hint">Re-decode whole sentence from pinyin via libime. Over-corrects on accurate text; off by default, kept for comparison</string>
+    <string name="bridge_llm_correct">On-device AI correction</string>
+    <string name="bridge_llm_correct_hint">Correct homophones by context with a small on-device LLM (e.g. 睡觉/水饺). Requires the LLM model plugin</string>
 </resources>
