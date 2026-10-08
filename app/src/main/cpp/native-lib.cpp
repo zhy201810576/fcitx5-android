@@ -5,11 +5,13 @@
 #include <jni.h>
 
 #include <sys/stat.h>
+#include <sys/system_properties.h>
 
 #include <memory>
 #include <future>
 #include <fstream>
 #include <mutex>
+#include <chrono>
 
 #include <android/log.h>
 
@@ -40,9 +42,6 @@
 #include <libime/core/userlanguagemodel.h>
 #include <libime/pinyin/pinyinime.h>
 #include <libime/pinyin/pinyincontext.h>
-
-// 端侧 LLM 纠错（Qwen2.5-1.5B GGUF 经 llama.cpp 推理）
-#include "llama.h"
 
 #include <boost/iostreams/device/file_descriptor.hpp>
 #include <boost/iostreams/stream_buffer.hpp>
@@ -1268,121 +1267,6 @@ Java_org_fcitx_fcitx5_android_link_AsrRescore_decodePinyin(JNIEnv *env, jclass c
     }
 }
 
-// ============ 端侧 LLM 纠错（llama.cpp）============
-
-namespace {
-
-struct LlmEngineState {
-    llama_model *model = nullptr;
-    llama_context *ctx = nullptr;
-};
-
-// 纠错 prompt + 输出，1024 token 足够；小批量 + 4 线程适配移动端 CPU
-constexpr int kLlmContextSize = 1024;
-constexpr int kLlmBatchSize = 256;
-constexpr int kLlmThreads = 4;
-
-} // namespace
-
-extern "C"
-JNIEXPORT jlong JNICALL
-Java_org_fcitx_fcitx5_android_link_LlmEngine_nativeLoad(JNIEnv *env, jclass clazz, jstring modelPath) {
-    try {
-        CString path(env, modelPath);
-        llama_model_params mp = llama_model_default_params();
-        mp.use_mmap = true; // mmap 加载，省内存
-        llama_model *model = llama_model_load_from_file(*path, mp);
-        if (!model) {
-            return 0;
-        }
-        llama_context_params cp = llama_context_default_params();
-        cp.n_ctx = kLlmContextSize;
-        cp.n_batch = kLlmBatchSize;
-        cp.n_threads = kLlmThreads;
-        cp.n_threads_batch = kLlmThreads;
-        llama_context *ctx = llama_init_from_model(model, cp);
-        if (!ctx) {
-            llama_model_free(model);
-            return 0;
-        }
-        auto *state = new LlmEngineState{model, ctx};
-        return reinterpret_cast<jlong>(state);
-    } catch (const std::exception &e) {
-        throwJavaException(env, e.what());
-        return 0;
-    }
-}
-
-extern "C"
-JNIEXPORT void JNICALL
-Java_org_fcitx_fcitx5_android_link_LlmEngine_nativeFree(JNIEnv *env, jclass clazz, jlong handle) {
-    if (handle == 0) {
-        return;
-    }
-    auto *state = reinterpret_cast<LlmEngineState *>(handle);
-    llama_free(state->ctx);
-    llama_model_free(state->model);
-    delete state;
-}
-
-extern "C"
-JNIEXPORT jstring JNICALL
-Java_org_fcitx_fcitx5_android_link_LlmEngine_nativeGenerate(JNIEnv *env, jclass clazz, jlong handle, jstring prompt, jint maxTokens) {
-    if (handle == 0) {
-        return nullptr;
-    }
-    auto *state = reinterpret_cast<LlmEngineState *>(handle);
-    try {
-        std::string text = CString(env, prompt);
-        const llama_vocab *vocab = llama_model_get_vocab(state->model);
-
-        // 贪心采样（纠错任务要确定性输出）
-        llama_sampler *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
-        llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
-
-        // 两遍 tokenize：先取长度，再填充
-        int32_t n = -llama_tokenize(vocab, text.c_str(), static_cast<int32_t>(text.size()),
-                                    nullptr, 0, true, true);
-        if (n <= 0) {
-            llama_sampler_free(smpl);
-            return nullptr;
-        }
-        std::vector<llama_token> tokens(static_cast<size_t>(n));
-        llama_tokenize(vocab, text.c_str(), static_cast<int32_t>(text.size()),
-                       tokens.data(), n, true, true);
-
-        llama_batch batch = llama_batch_get_one(tokens.data(), static_cast<int32_t>(tokens.size()));
-        if (llama_decode(state->ctx, batch) != 0) {
-            llama_sampler_free(smpl);
-            return nullptr;
-        }
-
-        std::string out;
-        char piece[256];
-        const int limit = maxTokens > 0 ? maxTokens : 64;
-        for (int i = 0; i < limit; i++) {
-            llama_token t = llama_sampler_sample(smpl, state->ctx, -1);
-            if (llama_vocab_is_eog(vocab, t)) {
-                break;
-            }
-            int len = llama_token_to_piece(vocab, t, piece, sizeof(piece), 0, true);
-            if (len < 0) {
-                break;
-            }
-            out.append(piece, static_cast<size_t>(len));
-            batch = llama_batch_get_one(&t, 1);
-            if (llama_decode(state->ctx, batch) != 0) {
-                break;
-            }
-        }
-        llama_sampler_free(smpl);
-        return env->NewStringUTF(out.c_str());
-    } catch (const std::exception &e) {
-        throwJavaException(env, e.what());
-        return nullptr;
-    }
-}
-
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_fcitx_fcitx5_android_data_table_TableManager_tableDictConv(JNIEnv *env, jclass clazz, jstring src, jstring dest, jboolean mode) {
@@ -1502,3 +1386,243 @@ Java_org_fcitx_fcitx5_android_utils_Ini_writeAsIni(JNIEnv *env, jclass clazz, js
 }
 
 #pragma GCC diagnostic pop
+
+// ============ 端侧 CSC 纠错（MacBERT4CSC ONNX 经 ORT C API，复用 sherpa-onnx 自带的 libonnxruntime.so）============
+//
+// 背景：sherpa-onnx 1.13.5 自带 libonnxruntime.so（ORT 1.27.1），其 C API 符号按版本号 versioned
+// （OrtGetApiBase@@VERS_1.27.1）。onnxruntime-android 的 ai.onnxruntime Java API 与之无法共存
+// （版本号不一致 → dlopen 报 cannot locate symbol），故 CSC 改用 ORT C API：
+// dlopen+dlsym 取符号（dlsym 按符号名查找、不受 version 钉死影响），复用 sherpa 已打入 app 的那份 .so，
+// 不引入第二个 ORT。Kotlin 侧为 [MacBert4CscEngine]。
+
+#include <dlfcn.h>
+#include <cstring>
+#include "onnxruntime/onnxruntime_c_api.h"
+
+namespace {
+
+const OrtApi *cscOrtApi() {
+    static const OrtApi *api = nullptr;
+    if (api) return api;
+    void *h = dlopen("libonnxruntime.so", RTLD_NOW | RTLD_LOCAL);
+    if (!h) {
+        __android_log_print(ANDROID_LOG_ERROR, "MacBert4Csc", "dlopen libonnxruntime.so failed: %s", dlerror());
+        return nullptr;
+    }
+    // 注意：OrtGetApiBase 返回 const OrtApiBase*，须经 base->GetApi(ORT_API_VERSION) 才能拿到 OrtApi。
+    // 若直接把返回值当 OrtApi* 用，会在错误偏移读到垃圾函数指针（CreateEnv 等调用直接崩溃）。
+    auto fn = reinterpret_cast<const OrtApiBase *(*)()>(dlsym(h, "OrtGetApiBase"));
+    if (!fn) {
+        __android_log_print(ANDROID_LOG_ERROR, "MacBert4Csc", "dlsym OrtGetApiBase failed: %s", dlerror());
+        return nullptr;
+    }
+    const OrtApiBase *base = fn();
+    if (!base) {
+        __android_log_print(ANDROID_LOG_ERROR, "MacBert4Csc", "OrtGetApiBase returned null");
+        return nullptr;
+    }
+    api = base->GetApi(ORT_API_VERSION);
+    if (!api) {
+        __android_log_print(ANDROID_LOG_ERROR, "MacBert4Csc", "OrtApiBase::GetApi(%d) returned null", ORT_API_VERSION);
+    }
+    return api;
+}
+
+struct CscSessionState {
+    OrtEnv *env = nullptr;
+    OrtSessionOptions *opts = nullptr;
+    OrtSession *session = nullptr;
+    OrtAllocator *alloc = nullptr;
+    char *inputNames[3] = {nullptr, nullptr, nullptr};
+    size_t numInputs = 0;
+    char *outputName = nullptr;
+};
+
+void cscFreeState(CscSessionState *s) {
+    if (!s) return;
+    const OrtApi *api = cscOrtApi();
+    if (api) {
+        if (s->alloc) {
+            for (size_t i = 0; i < s->numInputs && i < 3; i++) {
+                if (s->inputNames[i]) api->AllocatorFree(s->alloc, s->inputNames[i]);
+            }
+            if (s->outputName) api->AllocatorFree(s->alloc, s->outputName);
+        }
+        if (s->session) api->ReleaseSession(s->session);
+        if (s->opts) api->ReleaseSessionOptions(s->opts);
+        if (s->env) api->ReleaseEnv(s->env);
+    }
+    delete s;
+}
+
+// 输入名 → 张量槽位（input_ids=0 / attention_mask=1 / token_type_ids=2）；无法识别返回 -1
+int cscInputSlot(const char *name) {
+    if (!name) return -1;
+    if (strstr(name, "input_ids") || strstr(name, "input-ids")) return 0;
+    if (strstr(name, "attention_mask") || strstr(name, "attention-mask")) return 1;
+    if (strstr(name, "token_type_ids") || strstr(name, "token-type-ids")) return 2;
+    return -1;
+}
+
+} // namespace
+
+extern "C"
+JNIEXPORT jlong JNICALL
+Java_org_fcitx_fcitx5_android_link_MacBert4CscEngine_nativeCscLoad(
+        JNIEnv *env, jclass clazz, jstring modelPath, jstring ortLibPath) {
+    const OrtApi *api = cscOrtApi();
+    if (!api) return 0;
+
+    const char *path = env->GetStringUTFChars(modelPath, nullptr);
+    const char *libPath = env->GetStringUTFChars(ortLibPath, nullptr);
+
+    // 用完整路径 dlopen（避免 namespace/搜索路径歧义）；已加载则复用
+    void *h = dlopen(libPath, RTLD_NOW | RTLD_LOCAL);
+    if (!h) {
+        __android_log_print(ANDROID_LOG_ERROR, "MacBert4Csc", "dlopen(%s) failed: %s", libPath, dlerror());
+        env->ReleaseStringUTFChars(modelPath, path);
+        env->ReleaseStringUTFChars(ortLibPath, libPath);
+        return 0;
+    }
+
+    auto *s = new CscSessionState();
+    OrtStatus *st = nullptr;
+    bool ok = false;
+    do {
+        st = api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "macbert4csc", &s->env);
+        if (st) break;
+        st = api->CreateSessionOptions(&s->opts);
+        if (st) break;
+        // 线程数只是性能提示，失败不阻塞加载
+        st = api->SetIntraOpNumThreads(s->opts, 1);
+        if (st) { api->ReleaseStatus(st); st = nullptr; }
+        st = api->CreateSession(s->env, path, s->opts, &s->session);
+        if (st) break;
+        api->GetAllocatorWithDefaultOptions(&s->alloc);
+        api->SessionGetInputCount(s->session, &s->numInputs);
+        size_t numOutputs = 0;
+        api->SessionGetOutputCount(s->session, &numOutputs);
+        if (s->numInputs > 3 || numOutputs < 1) {
+            __android_log_print(ANDROID_LOG_ERROR, "MacBert4Csc", "unexpected io count: in=%zu out=%zu", s->numInputs, numOutputs);
+            break;
+        }
+        for (size_t i = 0; i < s->numInputs; i++) {
+            api->SessionGetInputName(s->session, i, s->alloc, &s->inputNames[i]);
+        }
+        api->SessionGetOutputName(s->session, 0, s->alloc, &s->outputName);
+        ok = true;
+    } while (false);
+
+    env->ReleaseStringUTFChars(modelPath, path);
+    env->ReleaseStringUTFChars(ortLibPath, libPath);
+
+    if (!ok) {
+        if (st) {
+            const char *msg = api->GetErrorMessage(st);
+            __android_log_print(ANDROID_LOG_ERROR, "MacBert4Csc", "load failed: %s", msg ? msg : "unknown");
+            api->ReleaseStatus(st);
+        }
+        cscFreeState(s);
+        return 0;
+    }
+    __android_log_print(ANDROID_LOG_INFO, "MacBert4Csc", "native session created (inputs=%zu)", s->numInputs);
+    return reinterpret_cast<jlong>(s);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_fcitx_fcitx5_android_link_MacBert4CscEngine_nativeCscFree(JNIEnv *env, jclass clazz, jlong handle) {
+    cscFreeState(reinterpret_cast<CscSessionState *>(handle));
+}
+
+extern "C"
+JNIEXPORT jfloatArray JNICALL
+Java_org_fcitx_fcitx5_android_link_MacBert4CscEngine_nativeCscRun(
+        JNIEnv *env, jclass clazz, jlong handle, jlongArray inputIds, jlongArray attMask, jlongArray typeIds) {
+    auto *s = reinterpret_cast<CscSessionState *>(handle);
+    const OrtApi *api = (s && s->session) ? cscOrtApi() : nullptr;
+    if (!api) return nullptr;
+
+    const jsize n = env->GetArrayLength(inputIds);
+    if (n <= 0) return nullptr;
+
+    jlong *ids = env->GetLongArrayElements(inputIds, nullptr);
+    jlong *att = env->GetLongArrayElements(attMask, nullptr);
+    jlong *typ = env->GetLongArrayElements(typeIds, nullptr);
+
+    OrtMemoryInfo *memInfo = nullptr;
+    OrtValue *inTensors[3] = {nullptr, nullptr, nullptr};
+    OrtValue *out = nullptr;
+    jfloatArray result = nullptr;
+    OrtStatus *st = nullptr;
+
+    do {
+        st = api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memInfo);
+        if (st) break;
+        const int64_t shape[2] = {1, n};
+        const size_t dataLen = static_cast<size_t>(n) * sizeof(int64_t);
+        st = api->CreateTensorWithDataAsOrtValue(memInfo, ids, dataLen, shape, 2, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, &inTensors[0]);
+        if (st) break;
+        st = api->CreateTensorWithDataAsOrtValue(memInfo, att, dataLen, shape, 2, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, &inTensors[1]);
+        if (st) break;
+        st = api->CreateTensorWithDataAsOrtValue(memInfo, typ, dataLen, shape, 2, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, &inTensors[2]);
+        if (st) break;
+
+        // 按模型真实输入名映射到槽位（BERT 导出输入顺序未必是 ids/mask/types）
+        const char *runNames[3] = {nullptr, nullptr, nullptr};
+        const OrtValue *runInputs[3] = {nullptr, nullptr, nullptr};
+        size_t runCount = 0;
+        bool mapped = true;
+        for (size_t i = 0; i < s->numInputs && i < 3; i++) {
+            int slot = cscInputSlot(s->inputNames[i]);
+            if (slot < 0) { mapped = false; break; }
+            runNames[runCount] = s->inputNames[i];
+            runInputs[runCount] = inTensors[slot];
+            runCount++;
+        }
+        if (!mapped || runCount != s->numInputs) {
+            __android_log_print(ANDROID_LOG_ERROR, "MacBert4Csc", "input mapping mismatch: mapped=%zu expected=%zu", runCount, s->numInputs);
+            break;
+        }
+
+        st = api->Run(s->session, nullptr, runNames, runInputs, runCount, &s->outputName, 1, &out);
+        if (st) break;
+
+        float *outData = nullptr;
+        st = api->GetTensorMutableData(out, reinterpret_cast<void **>(&outData));
+        if (st) break;
+
+        OrtTensorTypeAndShapeInfo *info = nullptr;
+        st = api->GetTensorTypeAndShape(out, &info);
+        if (st) break;
+        size_t dimsCount = 0;
+        api->GetDimensionsCount(info, &dimsCount);
+        int64_t dims[8] = {0};
+        if (dimsCount > 8) dimsCount = 8;
+        api->GetDimensions(info, dims, dimsCount);
+        api->ReleaseTensorTypeAndShapeInfo(info);
+        info = nullptr;
+
+        size_t total = 1;
+        for (size_t i = 0; i < dimsCount; i++) total *= static_cast<size_t>(dims[i]);
+        if (total == 0) break;
+
+        result = env->NewFloatArray(static_cast<jsize>(total));
+        if (result) env->SetFloatArrayRegion(result, 0, static_cast<jsize>(total), outData);
+    } while (false);
+
+    if (st) {
+        const char *msg = api->GetErrorMessage(st);
+        __android_log_print(ANDROID_LOG_ERROR, "MacBert4Csc", "run failed: %s", msg ? msg : "unknown");
+        api->ReleaseStatus(st);
+    }
+    for (int i = 0; i < 3; i++) {
+        if (inTensors[i]) api->ReleaseValue(inTensors[i]);
+    }
+    if (out) api->ReleaseValue(out);
+    if (memInfo) api->ReleaseMemoryInfo(memInfo);
+    env->ReleaseLongArrayElements(inputIds, ids, JNI_ABORT);
+    env->ReleaseLongArrayElements(attMask, att, JNI_ABORT);
+    env->ReleaseLongArrayElements(typeIds, typ, JNI_ABORT);
+    return result;
+}

@@ -9,6 +9,12 @@
 /plugin/*/src/main/assets/usr/
 # Generated asset descriptor
 /plugin/*/src/main/assets/descriptor.json
+# CSC 模型与词表（由 tools/export_macbert4csc.py 生成，体积过大不入库）
+/plugin/csc/src/main/assets/csc/
+
+# 导出工具虚拟环境与中间产物
+/tools/venv/
+/tools/macbert4csc_work/
 
 # Intellij
 .idea/*

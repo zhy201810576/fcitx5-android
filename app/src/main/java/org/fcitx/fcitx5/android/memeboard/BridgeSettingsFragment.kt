@@ -106,11 +106,11 @@ class BridgeSettingsFragment : PaddingPreferenceFragment() {
 
         category.addPreference(
             SwitchPreferenceCompat(ctx).apply {
-                setTitle(R.string.bridge_llm_correct)
-                setSummary(R.string.bridge_llm_correct_hint)
-                isChecked = MemeBoardPrefs.getLlmCorrectEnabled(ctx)
+                setTitle(R.string.bridge_csc_correct)
+                setSummary(R.string.bridge_csc_correct_hint)
+                isChecked = MemeBoardPrefs.getCscCorrectEnabled(ctx)
                 setOnPreferenceChangeListener { _, newValue ->
-                    MemeBoardPrefs.setLlmCorrectEnabled(ctx, newValue as Boolean)
+                    MemeBoardPrefs.setCscCorrectEnabled(ctx, newValue as Boolean)
                     true
                 }
             }
@@ -123,6 +123,18 @@ class BridgeSettingsFragment : PaddingPreferenceFragment() {
                 isChecked = MemeBoardPrefs.getAsrRescoreEnabled(ctx)
                 setOnPreferenceChangeListener { _, newValue ->
                     MemeBoardPrefs.setAsrRescoreEnabled(ctx, newValue as Boolean)
+                    true
+                }
+            }
+        )
+
+        category.addPreference(
+            SwitchPreferenceCompat(ctx).apply {
+                setTitle(R.string.bridge_eval_collect)
+                setSummary(R.string.bridge_eval_collect_hint)
+                isChecked = MemeBoardPrefs.getAsrEvalCollectEnabled(ctx)
+                setOnPreferenceChangeListener { _, newValue ->
+                    MemeBoardPrefs.setAsrEvalCollectEnabled(ctx, newValue as Boolean)
                     true
                 }
             }

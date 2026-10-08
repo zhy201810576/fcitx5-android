@@ -409,6 +409,8 @@
     <string name="bridge_load_model_hint">加载 Paraformer 离线语音模型</string>
     <string name="bridge_asr_rescore">拼音往返纠错（旧方案）</string>
     <string name="bridge_asr_rescore_hint">把整句转拼音再经 libime 重解码，对准确文本易过度纠错，默认关闭、仅作对比</string>
-    <string name="bridge_llm_correct">端侧智能纠错</string>
-    <string name="bridge_llm_correct_hint">用端侧小模型按上下文纠正同音字（如「睡觉/水饺」），需安装 LLM 模型插件</string>
+    <string name="bridge_csc_correct">端侧 CSC 纠错</string>
+    <string name="bridge_csc_correct_hint">用 MacBERT4CSC 专用纠错模型做等长逐字替换（如「新情→心情」），默认开启，需安装 CSC 模型插件</string>
+    <string name="bridge_eval_collect">采集评测样本</string>
+    <string name="bridge_eval_collect_hint">每条语音识别写一行 JSONL 到 files/asr_eval/samples.jsonl（评测期默认开，发布前须关闭）</string>
 </resources>

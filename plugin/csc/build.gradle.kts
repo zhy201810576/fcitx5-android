@@ -5,10 +5,10 @@ plugins {
 }
 
 android {
-    namespace = "org.fcitx.fcitx5.android.plugin.llm"
+    namespace = "org.fcitx.fcitx5.android.plugin.csc"
 
     defaultConfig {
-        applicationId = "org.fcitx.fcitx5.android.plugin.llm"
+        applicationId = "org.fcitx.fcitx5.android.plugin.csc"
     }
 
     buildFeatures {
@@ -26,10 +26,10 @@ android {
     }
 
     androidResources {
-        // GGUF 模型体积大且本身已量化压缩，跳过 AAPT2 二次压缩以加快打包，
+        // INT8 ONNX 模型体积较大且本身已量化，跳过 AAPT2 二次压缩以加快打包，
         // 并便于首次加载时以流方式读出后拷贝到 filesDir。
         @Suppress("UnstableApiUsage")
-        noCompress += "gguf"
+        noCompress += "onnx"
     }
 }
 

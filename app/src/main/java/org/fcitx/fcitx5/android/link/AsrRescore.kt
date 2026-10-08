@@ -5,6 +5,7 @@
 package org.fcitx.fcitx5.android.link
 
 import android.content.Context
+import android.util.Log
 import org.fcitx.fcitx5.android.memeboard.MemeBoardPrefs
 
 /**
@@ -13,9 +14,8 @@ import org.fcitx.fcitx5.android.memeboard.MemeBoardPrefs
  * Paraformer 是「逐字声学打分、无语言模型」的非自回归模型，对拼音正确但选字错的
  * 同音/近音字仍会出错（「睡觉→水饺」「网安→晚安」「你好吗→你好嘛」）。
  *
- * 首选方案：端侧小 LLM（Qwen2.5-1.5B）**选择性纠错**——只改明显同音/近音错字、
- * 保持原意、不整句重写（见 [correctWithLlm] + [acceptCorrection] 安全门控），
- * 避免「过度纠错」把对的改错（这是旧 libime round-trip 的失败点）。
+ * 默认方案：端侧专用 CSC 模型（MacBERT4CSC，INT8 ONNX，等长逐字替换、低置信不改），
+ * 见 [correctWithCsc] + [MacBert4CscEngine]。
  *
  * 备选/对比方案：libime PinyinDecoder pinyin round-trip（默认关闭，见 [rescoreWithLibime]）。
  *
@@ -24,18 +24,13 @@ import org.fcitx.fcitx5.android.memeboard.MemeBoardPrefs
  */
 object AsrRescore {
 
+    private const val TAG = "AsrRescore"
+
     /** 超过该长度的句子不做纠错（长文本重解码易偏且耗时） */
     private const val MAX_LEN = 50
 
     /** 从光标前文字提取的语境字数（LM n-gram 阶数通常 ≤4，取 6 个已足够） */
     private const val CONTEXT_MAX_CHARS = 6
-
-    /** 端侧 LLM 纠错的 system 约束（中文语言专家：选择性纠错 + 第三人称代词按语境区分） */
-    private const val SYSTEM_PROMPT =
-        "你是资深中文语言专家，负责纠正中文语音识别文本中的用字错误。请严格按以下规则：\n" +
-            "1. 只纠正同音字/近音字的用字错误，保持原意，不增删字词，不改写句子结构。\n" +
-            "2. 特别注意第三人称代词：结合上下文判断性别——指女性（如女孩、她、妈妈、女士、小姐、妻子等）用「她」，指男性用「他」，指动物或事物用「它」。他/她/它发音相同，是常见识别错误，务必按语境纠正。\n" +
-            "3. 只输出纠正后的文本本身，不添加任何解释。"
 
     private val lock = Any()
 
@@ -51,25 +46,50 @@ object AsrRescore {
      *  [contextText] 为光标前已有文字，作为跨句语境。 */
     fun postprocess(ctx: Context, text: String, contextText: String? = null): String {
         if (text.isBlank()) return text
-        // 端侧 LLM 选择性纠错（默认开）：只改明显同音/近音错字，不整句重写
-        if (MemeBoardPrefs.getLlmCorrectEnabled(ctx)) {
-            correctWithLlm(ctx, text, contextText)?.let { return it }
+        var mode = "none"
+        var cscEdits: String? = null
+        var result = text
+        if (MemeBoardPrefs.getCscCorrectEnabled(ctx)) {
+            // 端侧 CSC（MacBERT4CSC，默认开）
+            val c = correctWithCsc(ctx, text, contextText)
+            mode = "csc"
+            if (c != null) {
+                cscEdits = c.edits.joinToString(",") { "${it.position}:${it.original}->${it.corrected}" }
+                result = c.corrected
+            }
+        } else if (MemeBoardPrefs.getAsrRescoreEnabled(ctx)) {
+            // 旧 libime pinyin round-trip（默认关，保留作对比回退）
+            result = rescoreWithLibime(ctx, text, contextText)
+            if (result != text) mode = "libime"
         }
-        // 旧 libime pinyin round-trip（默认关，保留作对比回退）
-        if (MemeBoardPrefs.getAsrRescoreEnabled(ctx)) {
-            return rescoreWithLibime(ctx, text, contextText)
-        }
-        return text
+        // 上屏前把中文数字归一化为阿拉伯数字（Paraformer 输出「二零二六年十月八号」→「2026年10月8号」）
+        result = CnNumberNormalizer.normalize(result)
+        AsrEvalCollector.record(
+            ctx,
+            AsrEvalSample(
+                ts = System.currentTimeMillis(),
+                raw = text,
+                context = contextText,
+                mode = mode,
+                cscEdits = cscEdits,
+                output = result,
+            ),
+        )
+        return result
     }
 
-    /** 端侧 LLM 选择性纠错；模型未就绪 / 失败 / 超出边界时返回 null（降级为不纠错）。 */
-    private fun correctWithLlm(ctx: Context, text: String, contextText: String?): String? {
+    /** 端侧 CSC（MacBERT4CSC）纠错；模型未就绪 / 失败 / 超出边界时返回 null（降级为不纠错）。
+     *  当前为单句纠错（不注入 [contextText] 跨句语境，CSC 靠句内语义即可区分同音字）。 */
+    private fun correctWithCsc(ctx: Context, text: String, contextText: String?): CscCorrection? {
         if (text.length > MAX_LEN) return null
         if (text.any { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' }) return null
-        val engine = LlmEngineController.ensureLoaded(ctx) ?: return null
-        val prompt = buildCorrectionPrompt(text, contextText)
-        val out = engine.generate(prompt, maxTokens = text.length + 16)
-        return out?.let { acceptCorrection(text, it) }
+        val engine = MacBert4CscController.ensureLoaded(ctx) ?: return null
+        val c = engine.correct(text) ?: return null
+        Log.i(
+            TAG,
+            "csc-correction input=[$text] edits=[${c.edits.joinToString(",") { "${it.position}:${it.original}->${it.corrected}" }}] output=[${c.corrected}]",
+        )
+        return c
     }
 
     /** 旧 libime pinyin round-trip 纠错（已边缘化，默认关闭）。 */
@@ -84,49 +104,6 @@ object AsrRescore {
         }.getOrNull()
             ?.takeIf { it.isNotBlank() }
             ?: text
-    }
-
-    /** 构建纠错 prompt（Qwen2.5 ChatML 格式：system 约束 + 前文语境 + 识别文本）。 */
-    fun buildCorrectionPrompt(recognition: String, contextText: String?): String = buildString {
-        append("<|im_start|>system\n")
-        append(SYSTEM_PROMPT)
-        append("<|im_end|>\n<|im_start|>user\n")
-        if (!contextText.isNullOrBlank()) {
-            append("前文：").append(contextText.trim()).append('\n')
-        }
-        append("识别：").append(recognition)
-        append("<|im_end|>\n<|im_start|>assistant\n")
-    }
-
-    /**
-     * 安全门控：仅当 LLM 输出与输入字符级编辑距离很小（同音纠错是局部换字）才采纳，
-     * 防止 LLM 幻觉/改写。返回采纳文本，否则 null（保留原文）。
-     */
-    fun acceptCorrection(input: String, output: String): String? {
-        val o = output.trim()
-        if (o.isEmpty()) return null
-        val dist = levenshteinDistance(input, o)
-        val maxDist = maxOf(2, input.length / 4)
-        if (dist > maxDist) return null
-        return o
-    }
-
-    /** 字符级 Levenshtein 编辑距离。 */
-    fun levenshteinDistance(a: String, b: String): Int {
-        if (a == b) return 0
-        if (a.isEmpty()) return b.length
-        if (b.isEmpty()) return a.length
-        val prev = IntArray(b.length + 1) { it }
-        val curr = IntArray(b.length + 1)
-        for (i in 1..a.length) {
-            curr[0] = i
-            for (j in 1..b.length) {
-                val cost = if (a[i - 1] == b[j - 1]) 0 else 1
-                curr[j] = minOf(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
-            }
-            for (j in 0..b.length) prev[j] = curr[j]
-        }
-        return curr[b.length]
     }
 
     /** 从光标前文字里取末尾几个汉字作为语境词。 */

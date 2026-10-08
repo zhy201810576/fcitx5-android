@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name_debug">MemeBoard (CSC Model Plugin | Debug)</string>
+    <string name="app_name_release">MemeBoard (CSC Model Plugin)</string>
+    <string name="description">On-device Chinese spell correction (MacBERT4CSC) for MemeBoard voice correction</string>
+</resources>

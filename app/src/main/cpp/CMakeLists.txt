@@ -44,25 +44,10 @@ add_library(pinyin-customphrase STATIC "${CHINESE_ADDONS_PINYIN_DIR}/customphras
 target_include_directories(pinyin-customphrase INTERFACE "${CHINESE_ADDONS_PINYIN_DIR}")
 target_link_libraries(pinyin-customphrase PRIVATE Fcitx5::Utils LibIME::Core)
 
-# ---- 端侧 LLM 纠错：llama.cpp（Qwen2.5-1.5B GGUF 推理，CPU 后端）----
-# 交叉编译关键：GGML_NATIVE 必须 OFF，否则 -march=native 会破坏 Android 交叉编译；
-# 关闭所有 GPU/加速后端，仅保留 CPU。
-set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
-set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
-set(GGML_CUDA OFF CACHE BOOL "" FORCE)
-set(GGML_METAL OFF CACHE BOOL "" FORCE)
-set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
-set(GGML_BLAS OFF CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(LLAMA_CURL OFF CACHE BOOL "" FORCE)
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../llama.cpp" llama.cpp EXCLUDE_FROM_ALL)
-
 add_library(native-lib SHARED native-lib.cpp androidaddonloader/androidaddonloader.cpp)
 target_link_libraries(native-lib
         log
+        dl
         libuv::uv_a
         Fcitx5::Utils
         Fcitx5::Config
@@ -75,7 +60,6 @@ target_link_libraries(native-lib
         LibIME::Pinyin
         LibIME::Table
         pinyin-customphrase
-        llama
         )
 
 # copy module libraries from dependency lib

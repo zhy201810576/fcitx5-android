@@ -56,6 +56,3 @@
 [submodule "plugin/thai/src/main/cpp/fcitx5-libthai"]
 	path = plugin/thai/src/main/cpp/fcitx5-libthai
 	url = https://github.com/fcitx/fcitx5-libthai
-[submodule "llama.cpp"]
-	path = llama.cpp
-	url = https://github.com/ggml-org/llama.cpp.git

@@ -410,6 +410,8 @@
     <string name="bridge_load_model_hint">Load the Paraformer offline speech model</string>
     <string name="bridge_asr_rescore">Pinyin round-trip correction (legacy)</string>
     <string name="bridge_asr_rescore_hint">Re-decode whole sentence from pinyin via libime. Over-corrects on accurate text; off by default, kept for comparison</string>
-    <string name="bridge_llm_correct">On-device AI correction</string>
-    <string name="bridge_llm_correct_hint">Correct homophones by context with a small on-device LLM (e.g. 睡觉/水饺). Requires the LLM model plugin</string>
+    <string name="bridge_csc_correct">On-device CSC correction</string>
+    <string name="bridge_csc_correct_hint">MacBERT4CSC dedicated spell-correction model, same-length per-character replace (e.g. 新情→心情). On by default, requires the CSC model plugin</string>
+    <string name="bridge_eval_collect">Collect evaluation samples</string>
+    <string name="bridge_eval_collect_hint">Append one JSONL line per voice recognition to files/asr_eval/samples.jsonl (on for evaluation; must be off before release)</string>
 </resources>

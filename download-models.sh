@@ -42,20 +42,4 @@ else
   echo "完成：$WANXIANG_GRAM"
 fi
 
-echo "=== [3/3] 下载 Qwen2.5-1.5B-Instruct GGUF（Q4_K_M 约 1.1GB，Apache-2.0）==="
-LLM_ASSET_DIR="$SCRIPT_DIR/plugin/llm/src/main/assets/llm"
-LLM_MODEL_FILE="$LLM_ASSET_DIR/qwen2.5-1.5b-instruct-q4_k_m.gguf"
-# Qwen 官方 GGUF 发布。ModelScope（魔搭）国内直连快；备选 huggingface / hf-mirror：
-#   https://hf-mirror.com/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
-LLM_URL="https://modelscope.cn/models/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/master/qwen2.5-1.5b-instruct-q4_k_m.gguf"
-
-if [ -f "$LLM_MODEL_FILE" ]; then
-  echo "已存在，跳过：$LLM_MODEL_FILE"
-else
-  mkdir -p "$LLM_ASSET_DIR"
-  echo "下载：$LLM_URL"
-  curl -L --fail --retry 3 -o "$LLM_MODEL_FILE" "$LLM_URL"
-  echo "完成：$LLM_MODEL_FILE"
-fi
-
 echo "=== 全部就绪，可开始构建 ==="

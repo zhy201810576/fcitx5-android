@@ -34,7 +34,8 @@ object MemeBoardPrefs {
     private const val KEY_FAVORITES = "favorites"
     private const val KEY_RECENT = "recent"
     private const val KEY_ASR_RESCORE = "asr_rescore_enabled"
-    private const val KEY_LLM_CORRECT = "llm_correct_enabled"
+    private const val KEY_CSC_CORRECT = "csc_correct_enabled"
+    private const val KEY_ASR_EVAL_COLLECT = "asr_eval_collect_enabled"
 
     private const val KEYSTORE = "AndroidKeyStore"
     private const val ALIAS = "memeboard_api_key"
@@ -77,11 +78,17 @@ object MemeBoardPrefs {
     fun setAsrRescoreEnabled(ctx: Context, v: Boolean) =
         sp(ctx).edit().putBoolean(KEY_ASR_RESCORE, v).apply()
 
-    /** 语音识别结果是否启用端侧 LLM 选择性纠错（默认开）。 */
-    fun getLlmCorrectEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_LLM_CORRECT, true)
+    /** 语音识别结果是否启用端侧 CSC（MacBERT4CSC）纠错（默认开）。 */
+    fun getCscCorrectEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_CSC_CORRECT, true)
 
-    fun setLlmCorrectEnabled(ctx: Context, v: Boolean) =
-        sp(ctx).edit().putBoolean(KEY_LLM_CORRECT, v).apply()
+    fun setCscCorrectEnabled(ctx: Context, v: Boolean) =
+        sp(ctx).edit().putBoolean(KEY_CSC_CORRECT, v).apply()
+
+    /** 是否采集语音纠错评测样本（评测期间临时默认开，**发布前必须改回 false**；见 [org.fcitx.fcitx5.android.link.AsrEvalCollector]）。 */
+    fun getAsrEvalCollectEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_ASR_EVAL_COLLECT, true)
+
+    fun setAsrEvalCollectEnabled(ctx: Context, v: Boolean) =
+        sp(ctx).edit().putBoolean(KEY_ASR_EVAL_COLLECT, v).apply()
 
     /* ========== 图库 / 标签多选 ========== */
 
